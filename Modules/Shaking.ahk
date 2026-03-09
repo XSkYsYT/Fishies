@@ -18,10 +18,7 @@ SHAKE_DEBUG_ENABLED := false
 SHAKE_USE_FIXED_AREA := true
 SHAKE_FIXED_AREA := {x1: 20, y1: 40, x2: 780, y2: 580}
 SHAKE_IMAGE := 'Assets\Shake.png'
-SHAKE_IMAGE_BASE_WIDTH := 46
-SHAKE_IMAGE_BASE_HEIGHT := 14
-SHAKE_BASE_CLIENT_WIDTH := 800
-SHAKE_BASE_CLIENT_HEIGHT := 600
+SHAKE_IMAGE_SEARCH_SPEC := '*10 *TransFF0000 ' SHAKE_IMAGE
 MAX_SHAKES := 50
 SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK := 2
 
@@ -138,32 +135,9 @@ applySavedShakeArea() {
     return true
 }
 
-getShakeImageSearchSpec(variation := 10) {
-    global SHAKE_IMAGE, SHAKE_IMAGE_BASE_WIDTH, SHAKE_IMAGE_BASE_HEIGHT, SHAKE_BASE_CLIENT_WIDTH, SHAKE_BASE_CLIENT_HEIGHT
-
-    WinGetClientPos ,, &clientW, &clientH, "ahk_exe RobloxPlayerBeta.exe"
-    if clientW <= 0 || clientH <= 0
-        return "*" variation " *TransFF0000 " SHAKE_IMAGE
-
-    scaleX := clientW / SHAKE_BASE_CLIENT_WIDTH
-    scaleY := clientH / SHAKE_BASE_CLIENT_HEIGHT
-    targetW := Round(Max(8, SHAKE_IMAGE_BASE_WIDTH * scaleX))
-    targetH := Round(Max(6, SHAKE_IMAGE_BASE_HEIGHT * scaleY))
-
-    return "*" variation " *TransFF0000 *w" targetW " *h" targetH " " SHAKE_IMAGE
-}
-
-findShakeImageBySpec(&outX, &outY, spec) {
-    global SHAKE_AREA, SHAKE_IMAGE
-
-    if ImageSearch(&outX, &outY, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, spec)
-        return true
-
-    fallbackSpec := "*10 *TransFF0000 " SHAKE_IMAGE
-    return ImageSearch(&outX, &outY, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, fallbackSpec)
-}
-
 autoShake() {
+    global SHAKE_IMAGE_SEARCH_SPEC
+
     updateStatus("Shaking.")
 
     activateRoblox()
@@ -179,12 +153,12 @@ autoShake() {
 
         activateRoblox()
 
-        if ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, "*10 *TransFF0000 " SHAKE_IMAGE) {
+        if ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, SHAKE_IMAGE_SEARCH_SPEC) {
             SendEvent "{Click, " X ", " Y "}"
             lastShake := {x: X, y: X}
             MouseMove SHAKE_AREA.x2, SHAKE_AREA.y2
             loop 5 {
-                if !ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, "*10 *TransFF0000 " SHAKE_IMAGE)
+                if !ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, SHAKE_IMAGE_SEARCH_SPEC)
                     break
                 Sleep 10
             }
