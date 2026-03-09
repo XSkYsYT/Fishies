@@ -37,24 +37,62 @@ SendMode "Input"
 MACRO_TITLE := "Fisch Mode"
 CEREBRA_HANDLER_SCRIPT := "cerebra_handler.py"
 CEREBRA_HANDLER_LAUNCHED := false
+HOTKEY_BINDINGS := Map()
 
 
-; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-; HOTKEYS
-; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
 
-F1::startMacro()
-F2::pauseMacro()
-F3::exitMacro()
-F4::openFeedbackGui()
-F5::reloadMacro()
-F7::redoDetectionSetup()
-F12::toggleSafePause()
+getConfiguredHotkeyValue(configKey, fallback) {
+    value := Trim(getInfoConfigValue(configKey, fallback))
+    return value = "" ? fallback : value
+}
+
+registerConfiguredHotkeys() {
+    global HOTKEY_BINDINGS
+
+    if !IsObject(HOTKEY_BINDINGS)
+        HOTKEY_BINDINGS := Map()
+
+    for oldKey, _ in HOTKEY_BINDINGS {
+        try Hotkey(oldKey, "Off")
+    }
+    HOTKEY_BINDINGS := Map()
+
+    hotkeys := [
+        {cfg: "HotkeyStart", default: "F1", handler: Func("startMacro")},
+        {cfg: "HotkeyPause", default: "F2", handler: Func("pauseMacro")},
+        {cfg: "HotkeyExit", default: "F3", handler: Func("exitMacro")},
+        {cfg: "HotkeyFeedback", default: "F4", handler: Func("openFeedbackGui")},
+        {cfg: "HotkeyReload", default: "F5", handler: Func("reloadMacro")},
+        {cfg: "HotkeyRedo", default: "F7", handler: Func("redoDetectionSetup")},
+        {cfg: "HotkeySafePause", default: "F12", handler: Func("toggleSafePause")}
+    ]
+
+    for _, item in hotkeys {
+        keyName := getConfiguredHotkeyValue(item.cfg, item.default)
+        try {
+            Hotkey(keyName, item.handler, "On")
+            HOTKEY_BINDINGS[keyName] := true
+        }
+    }
+}
+
+applyConfiguredHotkeysFromGui(bindings) {
+    if !IsObject(bindings)
+        return false
+
+    for cfgKey, value in bindings {
+        IniWrite(value, A_ScriptDir "\info.ini", "", cfgKey)
+    }
+
+    registerConfiguredHotkeys()
+    return true
+}
 
 ; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
 ; MACRO
 ; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
 
+registerConfiguredHotkeys()
 runMacro()
 
 runMacro() {
