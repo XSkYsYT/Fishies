@@ -28,6 +28,7 @@ CATCH_MAX_DURATION_MS := 35000
 NORMAL_END_NO_STRONG_SIGNAL_MS := 4500
 CATCH_MISSING_FISH_BREAK_FRAMES := 80
 CATCH_STALE_SIGNAL_BREAK_FRAMES := 120
+CATCH_PREDICTED_BAR_BREAK_FRAMES := 55
 
 CATCH_ARROW_COLOR := "0x787878"
 CATCH_ARROW_TOLERANCE := 4
@@ -252,6 +253,7 @@ catchFish() {
     missingFishFrames := 0
     uiMissingFrames := 0
     staleSignalFrames := 0
+    predictedBarFrames := 0
     startupGraceFrames := 10
     lastStrongSignalTick := loopStartTick
     lastTick := A_TickCount
@@ -293,7 +295,9 @@ catchFish() {
         updateFishState(state, xFish, dt)
 
         barMiddleX := false
+        barDetected := false
         if findControlBarBounds(&whiteBounds) {
+            barDetected := true
             CONTROL_BAR_WIDTH := whiteBounds.width
             CONTROL_BAR_HALF_WIDTH := Round(whiteBounds.width / 2)
             barMiddleX := Round((whiteBounds.x1 + whiteBounds.x2) / 2)
@@ -308,6 +312,7 @@ catchFish() {
 
         if !barMiddleX {
             staleSignalFrames += 1
+            predictedBarFrames := 0
             if staleSignalFrames >= CATCH_STALE_SIGNAL_BREAK_FRAMES {
                 breakReason := "bar_lost"
                 break
@@ -317,8 +322,19 @@ catchFish() {
             continue
         }
 
-        staleSignalFrames := 0
-        lastStrongSignalTick := now
+        if barDetected {
+            staleSignalFrames := 0
+            predictedBarFrames := 0
+            lastStrongSignalTick := now
+        } else {
+            staleSignalFrames += 1
+            predictedBarFrames += 1
+            if staleSignalFrames >= CATCH_STALE_SIGNAL_BREAK_FRAMES || predictedBarFrames >= CATCH_PREDICTED_BAR_BREAK_FRAMES {
+                breakReason := "bar_lost"
+                break
+            }
+        }
+
         updateBarState(state, barMiddleX, dt)
 
         absError := Abs(xFish - barMiddleX)
