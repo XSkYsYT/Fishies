@@ -58,17 +58,17 @@ registerConfiguredHotkeys() {
     HOTKEY_BINDINGS := Map()
 
     hotkeys := [
-        {cfg: "HotkeyStart", default: "F1", handler: Func("startMacro")},
-        {cfg: "HotkeyPause", default: "F2", handler: Func("pauseMacro")},
-        {cfg: "HotkeyExit", default: "F3", handler: Func("exitMacro")},
-        {cfg: "HotkeyFeedback", default: "F4", handler: Func("openFeedbackGui")},
-        {cfg: "HotkeyReload", default: "F5", handler: Func("reloadMacro")},
-        {cfg: "HotkeyRedo", default: "F7", handler: Func("redoDetectionSetup")},
-        {cfg: "HotkeySafePause", default: "F12", handler: Func("toggleSafePause")}
+        {cfg: "HotkeyStart", fallback: "F1", handler: Func("startMacro")},
+        {cfg: "HotkeyPause", fallback: "F2", handler: Func("pauseMacro")},
+        {cfg: "HotkeyExit", fallback: "F3", handler: Func("exitMacro")},
+        {cfg: "HotkeyFeedback", fallback: "F4", handler: Func("openFeedbackGui")},
+        {cfg: "HotkeyReload", fallback: "F5", handler: Func("reloadMacro")},
+        {cfg: "HotkeyRedo", fallback: "F7", handler: Func("redoDetectionSetup")},
+        {cfg: "HotkeySafePause", fallback: "F12", handler: Func("toggleSafePause")}
     ]
 
     for _, item in hotkeys {
-        keyName := getConfiguredHotkeyValue(item.cfg, item.default)
+        keyName := getConfiguredHotkeyValue(item.cfg, item.fallback)
         try {
             Hotkey(keyName, item.handler, "On")
             HOTKEY_BINDINGS[keyName] := true

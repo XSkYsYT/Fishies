@@ -23,6 +23,7 @@ SHAKE_IMAGE_BASE_HEIGHT := 14
 SHAKE_BASE_CLIENT_WIDTH := 800
 SHAKE_BASE_CLIENT_HEIGHT := 600
 MAX_SHAKES := 50
+SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK := 2
 
 CATCH_BAR_MIN_RUN_RATIO := 0.11
 CATCH_BAR_MIN_RUN_PX := 30
@@ -163,6 +164,8 @@ findShakeImageBySpec(&outX, &outY, spec) {
 }
 
 autoShake() {
+    global SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK
+
     previousMouseDelay := A_MouseDelay
     SetMouseDelay -1
 
@@ -197,7 +200,7 @@ autoShake() {
             }
             Sleep 10
 
-            if isCatchBarDisplayed() {
+            if A_Index >= SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK && isCatchBarDisplayed() {
                 updateStatus("")
                 success := true
                 break

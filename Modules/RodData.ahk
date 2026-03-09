@@ -163,19 +163,19 @@ showRodSelectionGui() {
     tabHome.Push(guiObj.AddText("xm y+8 w620", "Configure keybinds and save them instantly:"))
 
     keybindRows := [
-        {label: "Start", cfg: "HotkeyStart", default: "F1"},
-        {label: "Pause", cfg: "HotkeyPause", default: "F2"},
-        {label: "Exit", cfg: "HotkeyExit", default: "F3"},
-        {label: "Feedback", cfg: "HotkeyFeedback", default: "F4"},
-        {label: "Reload", cfg: "HotkeyReload", default: "F5"},
-        {label: "Redo Setup", cfg: "HotkeyRedo", default: "F7"},
-        {label: "Safe Pause", cfg: "HotkeySafePause", default: "F12"}
+        {label: "Start", cfg: "HotkeyStart", fallback: "F1"},
+        {label: "Pause", cfg: "HotkeyPause", fallback: "F2"},
+        {label: "Exit", cfg: "HotkeyExit", fallback: "F3"},
+        {label: "Feedback", cfg: "HotkeyFeedback", fallback: "F4"},
+        {label: "Reload", cfg: "HotkeyReload", fallback: "F5"},
+        {label: "Redo Setup", cfg: "HotkeyRedo", fallback: "F7"},
+        {label: "Safe Pause", cfg: "HotkeySafePause", fallback: "F12"}
     ]
     keybindEdits := Map()
     rowY := yTop + 52
     for _, row in keybindRows {
         lbl := guiObj.AddText("xm y" rowY " w140", row.label ":")
-        edit := guiObj.AddEdit("x+8 yp-3 w110", getInfoConfigValue(row.cfg, row.default))
+        edit := guiObj.AddEdit("x+8 yp-3 w110", getInfoConfigValue(row.cfg, row.fallback))
         tabHome.Push(lbl)
         tabHome.Push(edit)
         keybindEdits[row.cfg] := edit
@@ -247,6 +247,7 @@ showRodSelectionGui() {
     rodBtn := guiObj.AddButton("x+8 w145", "Rod+Enchant+Bait")
     logsBtn := guiObj.AddButton("x+8 w145", "Recent Logs")
     closeBtn := guiObj.AddButton("xm y+12 w100", "Close")
+    quickFinishBtn := guiObj.AddButton("x+10 yp w150", "Finish Setup")
 
     tabMap := Map("home", tabHome, "color", tabColor, "rod", tabRod, "logs", tabLogs)
     showSetupTab(tabMap, "home")
@@ -257,6 +258,7 @@ showRodSelectionGui() {
     logsBtn.OnEvent("Click", (*) => showSetupTab(tabMap, "logs"))
 
     closeBtn.OnEvent("Click", (*) => guiObj.Destroy())
+    quickFinishBtn.OnEvent("Click", (*) => finishSetupSelection(resolveRodNameFromSelection(rodCombo.Text, selectionItems), enchantDropdown.Text, secondaryEnchantDropdown.Text, baitDropdown.Text, guiObj))
     guiObj.OnEvent("Close", (*) => onSetupGuiClosed())
     guiObj.OnEvent("Escape", (*) => guiObj.Destroy())
 
@@ -816,8 +818,6 @@ applyLocalFailureAdjustment() {
     catching.brakeSpeed := clampLearningValue(brake + 0.01, 0.20, 1.60, 3)
 
     SELECTED_ROD_STATS := buildEffectiveRodStatsFromBase(SELECTED_ROD_BASE_STATS, SELECTED_ENCHANT_NAME, SELECTED_SECONDARY_ENCHANT_NAME)
-    SELECTED_BAIT_NAME := baitName = "" ? "Worm" : baitName
-    IniWrite(SELECTED_BAIT_NAME, A_ScriptDir "\info.ini", "", "SelectedBait")
     configureCatchingForRod(SELECTED_ROD_STATS)
 }
 
