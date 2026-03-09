@@ -285,7 +285,7 @@ catchFish() {
         else
             uiMissingFrames += 1
 
-        fishDetected := findFishIndicatorX(CATCH_SCAN_AREA, &xFish)
+        fishDetected := findFishIndicatorX(CATCH_BAR_TOP_LINE, &xFish)
         if fishDetected {
             missingFishFrames := 0
             learning.fishDetectedFrames += 1
@@ -306,18 +306,27 @@ catchFish() {
 
         barMiddleX := false
         barDetected := false
+        barLeftEdge := catchMinX
+        barRightEdge := catchMaxX
         if findControlBarBounds(&whiteBounds) {
             barDetected := true
             CONTROL_BAR_WIDTH := whiteBounds.width
             CONTROL_BAR_HALF_WIDTH := Round(whiteBounds.width / 2)
             barMiddleX := Round((whiteBounds.x1 + whiteBounds.x2) / 2)
             learning.whiteBarFrames += 1
+            barLeftEdge := whiteBounds.x1
+            barRightEdge := whiteBounds.x2
             insetPx := Round(Max(2, whiteBounds.width * CATCH_CENTER_CUT_RATIO))
             CATCH_BAR_LEFT_X := whiteBounds.x1 + insetPx
             CATCH_BAR_RIGHT_X := whiteBounds.x2 - insetPx
         } else if state.hasBar {
             learning.multicolorBarFrames += 1
             barMiddleX := state.lastBarMiddleX + (state.barVelocity * dt)
+            barLeftEdge := Round(clampValue(barMiddleX - CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
+            barRightEdge := Round(clampValue(barMiddleX + CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
+            insetPx := Round(Max(2, CONTROL_BAR_WIDTH * CATCH_CENTER_CUT_RATIO))
+            CATCH_BAR_LEFT_X := clampValue(barLeftEdge + insetPx, catchMinX, catchMaxX)
+            CATCH_BAR_RIGHT_X := clampValue(barRightEdge - insetPx, catchMinX, catchMaxX)
         }
 
         if !barMiddleX {
@@ -366,15 +375,19 @@ catchFish() {
             break
         }
 
-        CATCH_BAR_LEFT_X := clampValue(CATCH_BAR_LEFT_X, catchMinX, catchMaxX)
-        CATCH_BAR_RIGHT_X := clampValue(CATCH_BAR_RIGHT_X, catchMinX, catchMaxX)
+        barLeftEdge := clampValue(barLeftEdge, catchMinX, catchMaxX)
+        barRightEdge := clampValue(barRightEdge, catchMinX, catchMaxX)
+        CATCH_BAR_LEFT_X := clampValue(CATCH_BAR_LEFT_X, barLeftEdge, barRightEdge)
+        CATCH_BAR_RIGHT_X := clampValue(CATCH_BAR_RIGHT_X, barLeftEdge, barRightEdge)
 
-        if xFish > CATCH_BAR_RIGHT_X {
+        if xFish > barRightEdge {
+            updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "EDGE-R")
             setControlDirection(state, 1)
             Sleep 12
             continue
         }
-        if xFish < CATCH_BAR_LEFT_X {
+        if xFish < barLeftEdge {
+            updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "EDGE-L")
             setControlDirection(state, -1)
             Sleep 12
             continue
@@ -842,7 +855,7 @@ clampValue(value, minValue, maxValue) {
 }
 
 findFishIndicatorX(search, &xFish) {
-    global CATCH_SCAN_AREA, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION
+    global CATCH_SCAN_AREA, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION
 
     area := CATCH_SCAN_AREA
     if IsObject(search) {
@@ -850,25 +863,25 @@ findFishIndicatorX(search, &xFish) {
             area := search
     }
 
-    if findFishMarkerByGrayColumn(area, &markerX) {
-        xFish := markerX
-        return true
-    }
-
-    if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE) {
-        xFish := foundX
-        return true
-    }
-
-    if IsObject(CATCH_SCAN_COLOR_SET) {
-        for _, color in CATCH_SCAN_COLOR_SET {
-            if color = CALIBRATION_FISH_COLOR
-                continue
-            if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, color, CATCH_SCAN_COLOR_VARIATION) {
-                xFish := foundX
-                return true
+    if isCerebraRodSelected() {
+        if findFishMarkerByGrayColumn(area, &markerX) {
+            xFish := markerX
+            return true
+        }
+        if IsObject(CATCH_SCAN_COLOR_SET) {
+            for _, color in CATCH_SCAN_COLOR_SET {
+                if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, color, CATCH_SCAN_COLOR_VARIATION) {
+                    xFish := foundX
+                    return true
+                }
             }
         }
+        return false
+    }
+
+    if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, "0x434b5b", 1) {
+        xFish := foundX
+        return true
     }
 
     return false
