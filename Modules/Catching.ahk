@@ -58,6 +58,7 @@ CATCH_USE_FIXED_AREA := true
 CATCH_FIXED_AREA := {x1: 249, y1: 502, x2: 551, y2: 517}
 CATCH_WHITE_VARIATION := 18
 CATCH_CENTER_CUT_RATIO := 0.22
+CATCH_CENTER_ZONE_RATIO := 0.70
 CATCH_BAR_SCAN_Y_RADIUS := 6
 CATCH_BAR_SCAN_FULL_HEIGHT := true
 CATCH_BAR_SCAN_STEP_PX := 1
@@ -218,7 +219,8 @@ createCatchScanDebugPins() {
 
     areaPin := Pin(winX + CATCH_SCAN_AREA.x1, winY + CATCH_SCAN_AREA.y1, winX + CATCH_SCAN_AREA.x2, winY + CATCH_SCAN_AREA.y2, 60000, "b1 flash0 c8a2be2")
 
-    insetPx := Round((CATCH_SCAN_AREA.x2 - CATCH_SCAN_AREA.x1 + 1) * CATCH_CENTER_CUT_RATIO)
+    scanWidth := CATCH_SCAN_AREA.x2 - CATCH_SCAN_AREA.x1 + 1
+    insetPx := getCenterCutInset(scanWidth)
     centerX1 := clampValue(CATCH_SCAN_AREA.x1 + insetPx, CATCH_SCAN_AREA.x1, CATCH_SCAN_AREA.x2)
     centerX2 := clampValue(CATCH_SCAN_AREA.x2 - insetPx, CATCH_SCAN_AREA.x1, CATCH_SCAN_AREA.x2)
     centerPin := Pin(winX + centerX1, winY + CATCH_SCAN_AREA.y1, winX + centerX2, winY + CATCH_SCAN_AREA.y2, 60000, "b1 flash0 c5fe87e")
@@ -325,7 +327,7 @@ catchFish() {
             barMiddleX := controlBar.x + CONTROL_BAR_HALF_WIDTH
             barLeftEdge := Round(clampValue(controlBar.x, catchMinX, catchMaxX))
             barRightEdge := Round(clampValue(controlBar.x + CONTROL_BAR_WIDTH, catchMinX, catchMaxX))
-            insetPx := Round(Max(2, CONTROL_BAR_WIDTH * CATCH_CENTER_CUT_RATIO))
+            insetPx := getCenterCutInset(CONTROL_BAR_WIDTH)
             CATCH_BAR_LEFT_X := clampValue(barLeftEdge + insetPx, catchMinX, catchMaxX)
             CATCH_BAR_RIGHT_X := clampValue(barRightEdge - insetPx, catchMinX, catchMaxX)
             staleSignalFrames := 0
@@ -351,7 +353,7 @@ catchFish() {
 
             barLeftEdge := Round(clampValue(barMiddleX - CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
             barRightEdge := Round(clampValue(barMiddleX + CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
-            insetPx := Round(Max(2, CONTROL_BAR_WIDTH * CATCH_CENTER_CUT_RATIO))
+            insetPx := getCenterCutInset(CONTROL_BAR_WIDTH)
             CATCH_BAR_LEFT_X := clampValue(barLeftEdge + insetPx, catchMinX, catchMaxX)
             CATCH_BAR_RIGHT_X := clampValue(barRightEdge - insetPx, catchMinX, catchMaxX)
             learning.multicolorBarFrames += 1
@@ -840,6 +842,20 @@ computePulseDelay(positionError, speedGap) {
     speedBias := Abs(speedGap) * 5
     nearTargetPenalty := magnitude <= (CATCHING_DEADZONE_PX * 2) ? 0.0 : 0.8
     return Round(clampValue(2 + (magnitude * 0.05) + speedBias + nearTargetPenalty, 2, 10))
+}
+
+
+getCenterCutInset(barWidth) {
+    global CATCH_CENTER_ZONE_RATIO, CATCH_CENTER_CUT_RATIO
+
+    width := Max(1, Round(barWidth))
+    zoneRatio := CATCH_CENTER_ZONE_RATIO
+    if zoneRatio <= 0 || zoneRatio >= 1
+        zoneRatio := 1.0 - (CATCH_CENTER_CUT_RATIO * 2)
+    zoneRatio := clampValue(zoneRatio, 0.20, 0.95)
+
+    cutRatio := (1.0 - zoneRatio) / 2.0
+    return Round(Max(2, width * cutRatio))
 }
 
 clampValue(value, minValue, maxValue) {
