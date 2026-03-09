@@ -200,27 +200,32 @@ showRodSelectionGui() {
 
     rodTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Rod, Enchant, Bait")
     tabRod.Push(rodTitle)
-    tabRod.Push(guiObj.AddText("xm y+8", "Rod:"))
-    rodCombo := guiObj.AddComboBox("xm w380 c000000", selectionItems.labels)
+
+    rodLabelY := yTop + 28
+    tabRod.Push(guiObj.AddText("xm y" rodLabelY, "Rod:"))
+    rodCombo := guiObj.AddComboBox("xm y" (rodLabelY + 20) " w380 c000000", selectionItems.labels)
     rodCombo.Choose(selectedIndex)
     tabRod.Push(rodCombo)
 
-    tabRod.Push(guiObj.AddText("xm y+8", "Primary Enchant:"))
-    enchantDropdown := guiObj.AddDropDownList("xm w380 c000000 Choose" selectedEnchantIndex, primaryEnchantNames)
+    primaryLabelY := rodLabelY + 58
+    tabRod.Push(guiObj.AddText("xm y" primaryLabelY, "Primary Enchant:"))
+    enchantDropdown := guiObj.AddDropDownList("xm y" (primaryLabelY + 20) " w380 c000000 Choose" selectedEnchantIndex, primaryEnchantNames)
     tabRod.Push(enchantDropdown)
 
-    tabRod.Push(guiObj.AddText("xm y+8", "Secondary Enchant:"))
-    secondaryEnchantDropdown := guiObj.AddDropDownList("xm w380 c000000 Choose" selectedSecondaryEnchantIndex, secondaryEnchantNames)
+    secondaryLabelY := primaryLabelY + 58
+    tabRod.Push(guiObj.AddText("xm y" secondaryLabelY, "Secondary Enchant:"))
+    secondaryEnchantDropdown := guiObj.AddDropDownList("xm y" (secondaryLabelY + 20) " w380 c000000 Choose" selectedSecondaryEnchantIndex, secondaryEnchantNames)
     tabRod.Push(secondaryEnchantDropdown)
 
-    tabRod.Push(guiObj.AddText("xm y+8", "Bait:"))
-    baitDropdown := guiObj.AddDropDownList("xm w250 c000000 Choose" selectedBaitIndex, baitNames)
+    baitLabelY := secondaryLabelY + 58
+    tabRod.Push(guiObj.AddText("xm y" baitLabelY, "Bait:"))
+    baitDropdown := guiObj.AddDropDownList("xm y" (baitLabelY + 20) " w250 c000000 Choose" selectedBaitIndex, baitNames)
     tabRod.Push(baitDropdown)
 
-    statsText := guiObj.AddText("xm w620 r10", "")
+    statsText := guiObj.AddText("xm y" (baitLabelY + 56) " w620 r8", "")
     tabRod.Push(statsText)
 
-    tutorialButton := guiObj.AddButton("xm w120", "Tutorial")
+    tutorialButton := guiObj.AddButton("xm y" (baitLabelY + 216) " w120", "Tutorial")
     finishButton := guiObj.AddButton("x+10 w160 Default", "Finish Setup")
     tabRod.Push(tutorialButton)
     tabRod.Push(finishButton)

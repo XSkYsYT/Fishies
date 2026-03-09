@@ -57,22 +57,19 @@ registerConfiguredHotkeys() {
     }
     HOTKEY_BINDINGS := Map()
 
-    hotkeys := [
-        {cfg: "HotkeyStart", fallback: "F1", handler: Func("startMacro")},
-        {cfg: "HotkeyPause", fallback: "F2", handler: Func("pauseMacro")},
-        {cfg: "HotkeyExit", fallback: "F3", handler: Func("exitMacro")},
-        {cfg: "HotkeyFeedback", fallback: "F4", handler: Func("openFeedbackGui")},
-        {cfg: "HotkeyReload", fallback: "F5", handler: Func("reloadMacro")},
-        {cfg: "HotkeyRedo", fallback: "F7", handler: Func("redoDetectionSetup")},
-        {cfg: "HotkeySafePause", fallback: "F12", handler: Func("toggleSafePause")}
-    ]
+    cfgKeys := ["HotkeyStart", "HotkeyPause", "HotkeyExit", "HotkeyFeedback", "HotkeyReload", "HotkeyRedo", "HotkeySafePause"]
+    fallbacks := ["F1", "F2", "F3", "F4", "F5", "F7", "F12"]
+    handlerNames := ["startMacro", "pauseMacro", "exitMacro", "openFeedbackGui", "reloadMacro", "redoDetectionSetup", "toggleSafePause"]
 
-    for _, item in hotkeys {
-        keyName := getConfiguredHotkeyValue(item.cfg, item.fallback)
+    i := 1
+    while i <= cfgKeys.Length {
+        keyName := getConfiguredHotkeyValue(cfgKeys[i], fallbacks[i])
         try {
-            Hotkey(keyName, item.handler, "On")
+            handlerFn := Func(handlerNames[i])
+            Hotkey(keyName, handlerFn, "On")
             HOTKEY_BINDINGS[keyName] := true
         }
+        i += 1
     }
 }
 
