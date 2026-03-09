@@ -226,9 +226,7 @@ showRodSelectionGui() {
     tabRod.Push(statsText)
 
     tutorialButton := guiObj.AddButton("xm y" (baitLabelY + 216) " w120", "Tutorial")
-    finishButton := guiObj.AddButton("x+10 w160 Default", "Finish Setup")
     tabRod.Push(tutorialButton)
-    tabRod.Push(finishButton)
 
     refreshSetupPreview(statsText, tutorialButton, selectionItems, rodCombo, enchantDropdown, secondaryEnchantDropdown)
     rodCombo.OnEvent("Change", (*) => refreshSetupPreview(statsText, tutorialButton, selectionItems, rodCombo, enchantDropdown, secondaryEnchantDropdown))
@@ -236,13 +234,12 @@ showRodSelectionGui() {
     secondaryEnchantDropdown.OnEvent("Change", (*) => refreshSetupPreview(statsText, tutorialButton, selectionItems, rodCombo, enchantDropdown, secondaryEnchantDropdown))
 
     tutorialButton.OnEvent("Click", (*) => showRodTutorialVideo(resolveRodNameFromSelection(rodCombo.Text, selectionItems)))
-    finishButton.OnEvent("Click", (*) => finishSetupSelection(resolveRodNameFromSelection(rodCombo.Text, selectionItems), enchantDropdown.Text, secondaryEnchantDropdown.Text, baitDropdown.Text, guiObj))
 
     logsTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Recent Logs")
     tabLogs.Push(logsTitle)
-    logsBox := guiObj.AddEdit("xm w620 h300 ReadOnly -Wrap", getRecentLogLines(45))
+    logsBox := guiObj.AddEdit("xm y" (yTop + 30) " w620 h290 ReadOnly -Wrap", getRecentLogLines(45))
     tabLogs.Push(logsBox)
-    refreshLogsBtn := guiObj.AddButton("xm y+10 w140", "Refresh Logs")
+    refreshLogsBtn := guiObj.AddButton("xm y" (yTop + 330) " w140", "Refresh Logs")
     tabLogs.Push(refreshLogsBtn)
     refreshLogsBtn.OnEvent("Click", (*) => logsBox.Text := getRecentLogLines(45))
 

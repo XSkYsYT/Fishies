@@ -21,6 +21,7 @@ SHAKE_IMAGE := 'Assets\Shake.png'
 SHAKE_IMAGE_SEARCH_SPEC := '*10 *TransFF0000 ' SHAKE_IMAGE
 MAX_SHAKES := 50
 SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK := 2
+SHAKE_CATCH_CONFIRM_FRAMES := 3
 
 CATCH_BAR_MIN_RUN_RATIO := 0.11
 CATCH_BAR_MIN_RUN_PX := 30
@@ -136,7 +137,7 @@ applySavedShakeArea() {
 }
 
 autoShake() {
-    global SHAKE_IMAGE_SEARCH_SPEC
+    global SHAKE_IMAGE_SEARCH_SPEC, SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK, SHAKE_CATCH_CONFIRM_FRAMES
 
     updateStatus("Shaking.")
 
@@ -146,6 +147,7 @@ autoShake() {
 
     lastShake := {x: 0, y: 0}
     success := false
+    catchConfirmStreak := 0
 
     Loop MAX_SHAKES {
 
@@ -165,10 +167,15 @@ autoShake() {
         }
         Sleep 10
 
-        if isCatchBarDisplayed() {
-            updateStatus("")
-            success := true
-            break
+        if A_Index >= SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK && isCatchBarDisplayed() {
+            catchConfirmStreak += 1
+            if catchConfirmStreak >= SHAKE_CATCH_CONFIRM_FRAMES {
+                updateStatus("")
+                success := true
+                break
+            }
+        } else {
+            catchConfirmStreak := 0
         }
 
     }
