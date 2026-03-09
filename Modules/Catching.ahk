@@ -238,147 +238,138 @@ catchFish() {
 
     ensureCatchScanConfigured()
     WinGetClientPos &ROBLOX_X, &ROBLOX_Y, , , "ahk_exe RobloxPlayerBeta.exe"
+
     learning := createCatchLearningMetrics()
     loopStartTick := A_TickCount
     state := createCatchingState()
-    heartbeatMode := isHeartbeatControlModeSelected()
+    cerebraMode := isHeartbeatControlModeSelected()
 
     activateRoblox()
-    if heartbeatMode
-        applyHeartbeatControlScaling()
-    else
+    if cerebraMode {
+        if CONTROL_BAR_WIDTH < 40 {
+            CONTROL_BAR_WIDTH := 120
+            CONTROL_BAR_HALF_WIDTH := Round(120 / 2)
+        }
+    } else {
         getArrowOffsets()
-
-    if CONTROL_BAR_WIDTH <= 0 {
-        CONTROL_BAR_HALF_WIDTH := 15
-        CONTROL_BAR_WIDTH := 30
+        if CONTROL_BAR_WIDTH <= 0 {
+            CONTROL_BAR_HALF_WIDTH := 15
+            CONTROL_BAR_WIDTH := 30
+        }
     }
 
     catchMinX := CATCH_BAR_TOP_LINE.x1
     catchMaxX := CATCH_BAR_TOP_LINE.x2
-    initialInset := Round(Max(2, CONTROL_BAR_WIDTH * CATCH_CENTER_CUT_RATIO))
-    CATCH_BAR_LEFT_X := clampValue(catchMinX + initialInset, catchMinX, catchMaxX)
-    CATCH_BAR_RIGHT_X := clampValue(catchMaxX - initialInset, catchMinX, catchMaxX)
 
-    missingFishFrames := 0
-    uiMissingFrames := 0
-    staleSignalFrames := 0
-    predictedBarFrames := 0
-    startupGraceFrames := 10
-    lastStrongSignalTick := loopStartTick
-    lastTick := A_TickCount
-    breakReason := ""
+    CATCH_BAR_LEFT_X := clampValue(catchMinX + (CONTROL_BAR_WIDTH * 0.70), catchMinX, catchMaxX)
+    CATCH_BAR_RIGHT_X := clampValue(catchMaxX - (CONTROL_BAR_WIDTH * 0.70), catchMinX, catchMaxX)
 
     debugPins := createCatchScanDebugPins()
     showCatchDebugBar()
 
+    missingFishFrames := 0
+    noTargetFrames := 0
+    staleSignalFrames := 0
+    breakReason := ""
+    lastTick := A_TickCount
+
     updateStatus("Catching: loop")
+    activateRoblox()
     Loop {
         now := A_TickCount
         dt := Max(now - lastTick, 1)
         lastTick := now
-        elapsedMs := now - loopStartTick
 
         learning.frames += 1
-        if isCatchBarDisplayed()
-            uiMissingFrames := 0
-        else
-            uiMissingFrames += 1
 
         fishDetected := findFishIndicatorX(CATCH_BAR_TOP_LINE, &xFish)
-        if fishDetected {
+        fishFromFallback := false
+        if !fishDetected {
+            missingFishFrames += 1
+            if !cerebraMode {
+                if !state.hasFish && missingFishFrames >= 18 {
+                    breakReason := "no_fish"
+                    break
+                }
+                if state.hasFish && missingFishFrames >= CATCH_MISSING_FISH_BREAK_FRAMES {
+                    breakReason := "fish_lost"
+                    break
+                }
+                xFish := Round(clampValue(state.lastFishX + (state.fishVelocity * dt), catchMinX, catchMaxX))
+            } else {
+                probeBar := getControlBarProperties(true)
+                if probeBar.isWhite {
+                    xFish := probeBar.x + CONTROL_BAR_HALF_WIDTH
+                } else if state.hasFish {
+                    xFish := Round(clampValue(state.lastFishX + (state.fishVelocity * dt), catchMinX, catchMaxX))
+                } else if state.hasBar {
+                    xFish := Round(clampValue(state.lastBarMiddleX, catchMinX, catchMaxX))
+                } else {
+                    xFish := Round((catchMinX + catchMaxX) / 2)
+                }
+                fishFromFallback := true
+            }
+            learning.fallbackFishFrames += 1
+        } else {
             missingFishFrames := 0
             learning.fishDetectedFrames += 1
-        } else {
-            missingFishFrames += 1
-            if !state.hasFish && missingFishFrames >= 18 {
-                breakReason := "no_fish"
-                break
-            }
-            if state.hasFish && missingFishFrames >= CATCH_MISSING_FISH_BREAK_FRAMES {
-                breakReason := "fish_lost"
-                break
-            }
-            xFish := Round(clampValue(state.lastFishX + (state.fishVelocity * dt), catchMinX, catchMaxX))
-            learning.fallbackFishFrames += 1
         }
         updateFishState(state, xFish, dt)
 
+        controlBar := getControlBarProperties(cerebraMode)
         barMiddleX := false
-        barDetected := false
         barLeftEdge := catchMinX
         barRightEdge := catchMaxX
-        if findControlBarBounds(&whiteBounds) {
-            barDetected := true
-            CONTROL_BAR_WIDTH := whiteBounds.width
-            CONTROL_BAR_HALF_WIDTH := Round(whiteBounds.width / 2)
-            barMiddleX := Round((whiteBounds.x1 + whiteBounds.x2) / 2)
+
+        if controlBar.isWhite {
+            barMiddleX := controlBar.x + CONTROL_BAR_HALF_WIDTH
+            barLeftEdge := Round(clampValue(controlBar.x, catchMinX, catchMaxX))
+            barRightEdge := Round(clampValue(controlBar.x + CONTROL_BAR_WIDTH, catchMinX, catchMaxX))
+            insetPx := Round(Max(2, CONTROL_BAR_WIDTH * CATCH_CENTER_CUT_RATIO))
+            CATCH_BAR_LEFT_X := clampValue(barLeftEdge + insetPx, catchMinX, catchMaxX)
+            CATCH_BAR_RIGHT_X := clampValue(barRightEdge - insetPx, catchMinX, catchMaxX)
+            staleSignalFrames := 0
+            noTargetFrames := 0
             learning.whiteBarFrames += 1
-            barLeftEdge := whiteBounds.x1
-            barRightEdge := whiteBounds.x2
-            insetPx := Round(Max(2, whiteBounds.width * CATCH_CENTER_CUT_RATIO))
-            CATCH_BAR_LEFT_X := whiteBounds.x1 + insetPx
-            CATCH_BAR_RIGHT_X := whiteBounds.x2 - insetPx
-        } else if state.hasBar {
-            learning.multicolorBarFrames += 1
-            barMiddleX := state.lastBarMiddleX + (state.barVelocity * dt)
+        } else {
+            search := CATCH_BAR_ARROW_LINE
+            if !cerebraMode && PixelSearch(&arrowX, &Y, search.x1, search.y1, search.x2, search.y2, "0x7a7879", 10)
+                barMiddleX := estimateBarMiddleFromArrow(arrowX, state)
+            else if state.hasBar
+                barMiddleX := cerebraMode ? state.lastBarMiddleX : (state.lastBarMiddleX + (state.barVelocity * dt))
+
+            if !barMiddleX {
+                staleSignalFrames += 1
+                if staleSignalFrames >= CATCH_STALE_SIGNAL_BREAK_FRAMES {
+                    breakReason := "bar_lost"
+                    break
+                }
+                updateCatchDebugBar(catchMinX, catchMaxX, xFish, state.hasBar ? state.lastBarMiddleX : catchMinX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "no-bar")
+                Sleep 8
+                continue
+            }
+
             barLeftEdge := Round(clampValue(barMiddleX - CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
             barRightEdge := Round(clampValue(barMiddleX + CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
             insetPx := Round(Max(2, CONTROL_BAR_WIDTH * CATCH_CENTER_CUT_RATIO))
             CATCH_BAR_LEFT_X := clampValue(barLeftEdge + insetPx, catchMinX, catchMaxX)
             CATCH_BAR_RIGHT_X := clampValue(barRightEdge - insetPx, catchMinX, catchMaxX)
-        }
+            learning.multicolorBarFrames += 1
 
-        if !barMiddleX {
-            staleSignalFrames += 1
-            predictedBarFrames := 0
-            if staleSignalFrames >= CATCH_STALE_SIGNAL_BREAK_FRAMES {
-                breakReason := "bar_lost"
-                break
-            }
-            updateCatchDebugBar(catchMinX, catchMaxX, xFish, state.hasBar ? state.lastBarMiddleX : catchMinX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "no-bar")
-            Sleep 2
-            continue
-        }
-
-        if barDetected {
-            staleSignalFrames := 0
-            predictedBarFrames := 0
-            lastStrongSignalTick := now
-        } else {
-            staleSignalFrames += 1
-            predictedBarFrames += 1
-            if staleSignalFrames >= CATCH_STALE_SIGNAL_BREAK_FRAMES || predictedBarFrames >= CATCH_PREDICTED_BAR_BREAK_FRAMES {
-                breakReason := "bar_lost"
-                break
+            if cerebraMode {
+                hasLiveTarget := fishDetected || !fishFromFallback || state.hasBar
+                if hasLiveTarget
+                    noTargetFrames := 0
+                else
+                    noTargetFrames += 1
+                if noTargetFrames >= 45 {
+                    breakReason := "no_target"
+                    break
+                }
             }
         }
 
         updateBarState(state, barMiddleX, dt)
-
-        absError := Abs(xFish - barMiddleX)
-        learning.errorSamples += 1
-        learning.totalAbsErrorPx += absError
-        if absError > learning.maxAbsErrorPx
-            learning.maxAbsErrorPx := absError
-
-        if elapsedMs >= CATCH_MAX_DURATION_MS {
-            breakReason := "max_duration"
-            break
-        }
-        if A_Index > startupGraceFrames && uiMissingFrames >= 30 {
-            breakReason := "ui_missing"
-            break
-        }
-        if elapsedMs > 5000 && (now - lastStrongSignalTick) >= NORMAL_END_NO_STRONG_SIGNAL_MS {
-            breakReason := "no_strong_signal"
-            break
-        }
-
-        barLeftEdge := clampValue(barLeftEdge, catchMinX, catchMaxX)
-        barRightEdge := clampValue(barRightEdge, catchMinX, catchMaxX)
-        CATCH_BAR_LEFT_X := clampValue(CATCH_BAR_LEFT_X, barLeftEdge, barRightEdge)
-        CATCH_BAR_RIGHT_X := clampValue(CATCH_BAR_RIGHT_X, barLeftEdge, barRightEdge)
 
         if xFish > barRightEdge {
             updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "EDGE-R")
@@ -397,6 +388,11 @@ catchFish() {
         updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, inCenterZone ? "CENTER" : "TRACK")
 
         if inCenterZone {
+            if cerebraMode && fishFromFallback && missingFishFrames >= 2 {
+                setControlDirection(state, Mod(A_Index, 20) < 10 ? 1 : -1)
+                Sleep 8
+                continue
+            }
             if state.clickDown
                 setControlDirection(state, -1)
             Sleep 2
