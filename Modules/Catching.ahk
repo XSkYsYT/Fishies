@@ -58,6 +58,8 @@ CATCH_FIXED_AREA := {x1: 249, y1: 502, x2: 551, y2: 517}
 CATCH_WHITE_VARIATION := 18
 CATCH_CENTER_CUT_RATIO := 0.22
 CATCH_BAR_SCAN_Y_RADIUS := 6
+CATCH_BAR_SCAN_FULL_HEIGHT := true
+CATCH_BAR_SCAN_STEP_PX := 1
 CATCH_BAR_MIN_WIDTH_PX := 18
 CATCH_BAR_BRIGHT_LUMA_MIN := 210
 CATCH_BAR_GRAY_CHANNEL_DELTA_MAX := 34
@@ -837,15 +839,21 @@ findFishIndicatorX(search, &xFish) {
 }
 
 findControlBarBounds(&bounds) {
-    global CATCH_SCAN_LINE, CATCH_BAR, CATCH_BAR_SCAN_Y_RADIUS
+    global CATCH_SCAN_LINE, CATCH_BAR, CATCH_BAR_SCAN_Y_RADIUS, CATCH_BAR_SCAN_FULL_HEIGHT, CATCH_BAR_SCAN_STEP_PX
 
     best := false
     bestWidth := 0
 
-    scanCenterY := CATCH_SCAN_LINE.y
-    yStart := Max(CATCH_BAR.y1, scanCenterY - CATCH_BAR_SCAN_Y_RADIUS)
-    yEnd := Min(CATCH_BAR.y2, scanCenterY + CATCH_BAR_SCAN_Y_RADIUS)
+    if CATCH_BAR_SCAN_FULL_HEIGHT {
+        yStart := CATCH_BAR.y1
+        yEnd := CATCH_BAR.y2
+    } else {
+        scanCenterY := CATCH_SCAN_LINE.y
+        yStart := Max(CATCH_BAR.y1, scanCenterY - CATCH_BAR_SCAN_Y_RADIUS)
+        yEnd := Min(CATCH_BAR.y2, scanCenterY + CATCH_BAR_SCAN_Y_RADIUS)
+    }
 
+    yStep := Max(1, CATCH_BAR_SCAN_STEP_PX)
     y := yStart
     while y <= yEnd {
         if findWhiteControlBarBoundsOnLine(y, &candidate) {
@@ -859,7 +867,7 @@ findControlBarBounds(&bounds) {
                 bestWidth := candidate.width
             }
         }
-        y += 1
+        y += yStep
     }
 
     if !IsObject(best)
