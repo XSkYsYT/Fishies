@@ -67,6 +67,10 @@ CATCH_BAR_GRAY_CHANNEL_DELTA_MAX := 34
 CATCH_BAR_GRAY_LUMA_MIN := 70
 CATCH_BAR_GRAY_LUMA_MAX := 245
 CATCH_BAR_RUN_GAP_TOLERANCE_PX := 4
+FISH_MARKER_GRAY_CHANNEL_DELTA_MAX := 28
+FISH_MARKER_LUMA_MIN := 55
+FISH_MARKER_LUMA_MAX := 190
+FISH_MARKER_MIN_COLUMN_HITS := 4
 
 configureCatchScanLineBeforeStart() {
     global CATCH_SCAN_LINE_CONFIGURED, CATCH_SCAN_LINE, CATCH_SCAN_AREA, CATCH_BAR, CATCH_BAR_TOP_LINE, CATCH_BAR_ARROW_LINE
@@ -205,22 +209,28 @@ applySavedCatchScanArea() {
 }
 
 createCatchScanDebugPins() {
-    global CATCH_SCAN_DEBUG_ENABLED, CATCH_SCAN_AREA, CATCH_SCAN_LINE
+    global CATCH_SCAN_DEBUG_ENABLED, CATCH_SCAN_AREA, CATCH_CENTER_CUT_RATIO
 
     if !CATCH_SCAN_DEBUG_ENABLED
         return false
 
     WinGetClientPos &winX, &winY, , , "ahk_exe RobloxPlayerBeta.exe"
+
     areaPin := Pin(winX + CATCH_SCAN_AREA.x1, winY + CATCH_SCAN_AREA.y1, winX + CATCH_SCAN_AREA.x2, winY + CATCH_SCAN_AREA.y2, 60000, "b1 flash0 c8a2be2")
-    linePin := Pin(winX + CATCH_SCAN_LINE.x1, winY + CATCH_SCAN_LINE.y, winX + CATCH_SCAN_LINE.x2, winY + CATCH_SCAN_LINE.y, 60000, "b1 flash0 cffffff")
-    return {area: areaPin, line: linePin}
+
+    insetPx := Round((CATCH_SCAN_AREA.x2 - CATCH_SCAN_AREA.x1 + 1) * CATCH_CENTER_CUT_RATIO)
+    centerX1 := clampValue(CATCH_SCAN_AREA.x1 + insetPx, CATCH_SCAN_AREA.x1, CATCH_SCAN_AREA.x2)
+    centerX2 := clampValue(CATCH_SCAN_AREA.x2 - insetPx, CATCH_SCAN_AREA.x1, CATCH_SCAN_AREA.x2)
+    centerPin := Pin(winX + centerX1, winY + CATCH_SCAN_AREA.y1, winX + centerX2, winY + CATCH_SCAN_AREA.y2, 60000, "b1 flash0 c5fe87e")
+
+    return {area: areaPin, center: centerPin}
 }
 
 destroyCatchScanDebugPins(pins) {
     if !IsObject(pins)
         return
     try pins.area.Destroy()
-    try pins.line.Destroy()
+    try pins.center.Destroy()
 }
 
 catchFish() {
@@ -275,7 +285,7 @@ catchFish() {
         else
             uiMissingFrames += 1
 
-        fishDetected := findFishIndicatorX(CATCH_BAR_TOP_LINE, &xFish)
+        fishDetected := findFishIndicatorX(CATCH_SCAN_AREA, &xFish)
         if fishDetected {
             missingFishFrames := 0
             learning.fishDetectedFrames += 1
@@ -832,10 +842,20 @@ clampValue(value, minValue, maxValue) {
 }
 
 findFishIndicatorX(search, &xFish) {
-    global CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE
+    global CATCH_SCAN_AREA, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION
 
-    ; Legacy-first path keeps white-bar behavior stable.
-    if PixelSearch(&foundX, &Y, search.x1, search.y1, search.x2, search.y2, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE) {
+    area := CATCH_SCAN_AREA
+    if IsObject(search) {
+        if search.HasOwnProp("x1") && search.HasOwnProp("y1") && search.HasOwnProp("x2") && search.HasOwnProp("y2")
+            area := search
+    }
+
+    if findFishMarkerByGrayColumn(area, &markerX) {
+        xFish := markerX
+        return true
+    }
+
+    if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE) {
         xFish := foundX
         return true
     }
@@ -844,7 +864,7 @@ findFishIndicatorX(search, &xFish) {
         for _, color in CATCH_SCAN_COLOR_SET {
             if color = CALIBRATION_FISH_COLOR
                 continue
-            if PixelSearch(&foundX, &Y, search.x1, search.y1, search.x2, search.y2, color, CATCH_SCAN_COLOR_VARIATION) {
+            if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, color, CATCH_SCAN_COLOR_VARIATION) {
                 xFish := foundX
                 return true
             }
@@ -854,8 +874,55 @@ findFishIndicatorX(search, &xFish) {
     return false
 }
 
+findFishMarkerByGrayColumn(area, &xFish) {
+    global FISH_MARKER_MIN_COLUMN_HITS
+
+    bestX := 0
+    bestHits := 0
+
+    x := area.x1
+    while x <= area.x2 {
+        hits := 0
+        y := area.y1
+        while y <= area.y2 {
+            color := PixelGetColor(x, y, "RGB")
+            if isLikelyFishMarkerPixel(color)
+                hits += 1
+            y += 1
+        }
+
+        if hits > bestHits {
+            bestHits := hits
+            bestX := x
+        }
+        x += 1
+    }
+
+    if bestHits < FISH_MARKER_MIN_COLUMN_HITS
+        return false
+
+    xFish := bestX
+    return true
+}
+
+isLikelyFishMarkerPixel(color) {
+    global FISH_MARKER_GRAY_CHANNEL_DELTA_MAX, FISH_MARKER_LUMA_MIN, FISH_MARKER_LUMA_MAX
+
+    c := colorToInt(color)
+    r := (c >> 16) & 0xFF
+    g := (c >> 8) & 0xFF
+    b := c & 0xFF
+
+    maxChannelDelta := Max(Abs(r - g), Abs(r - b), Abs(g - b))
+    if maxChannelDelta > FISH_MARKER_GRAY_CHANNEL_DELTA_MAX
+        return false
+
+    luma := getPixelLuma(c)
+    return luma >= FISH_MARKER_LUMA_MIN && luma <= FISH_MARKER_LUMA_MAX
+}
+
 findControlBarBounds(&bounds) {
-    global CATCH_SCAN_LINE, CATCH_BAR, CATCH_BAR_SCAN_Y_RADIUS, CATCH_BAR_SCAN_FULL_HEIGHT, CATCH_BAR_SCAN_STEP_PX
+    global CATCH_BAR, CATCH_BAR_SCAN_Y_RADIUS, CATCH_BAR_SCAN_FULL_HEIGHT, CATCH_BAR_SCAN_STEP_PX
 
     best := false
     bestWidth := 0
@@ -864,9 +931,9 @@ findControlBarBounds(&bounds) {
         yStart := CATCH_BAR.y1
         yEnd := CATCH_BAR.y2
     } else {
-        scanCenterY := CATCH_SCAN_LINE.y
-        yStart := Max(CATCH_BAR.y1, scanCenterY - CATCH_BAR_SCAN_Y_RADIUS)
-        yEnd := Min(CATCH_BAR.y2, scanCenterY + CATCH_BAR_SCAN_Y_RADIUS)
+        barCenterY := Round((CATCH_BAR.y1 + CATCH_BAR.y2) / 2)
+        yStart := Max(CATCH_BAR.y1, barCenterY - CATCH_BAR_SCAN_Y_RADIUS)
+        yEnd := Min(CATCH_BAR.y2, barCenterY + CATCH_BAR_SCAN_Y_RADIUS)
     }
 
     yStep := Max(1, CATCH_BAR_SCAN_STEP_PX)
@@ -1582,7 +1649,7 @@ cerebraHandleMinigameControl(controlState) {
         fishDetected := detectCerebraBlackTextTargetX(&xFish, &textPixels, &textW, &textH)
 
     if !fishDetected
-        fishDetected := findFishIndicatorX(CATCH_BAR_TOP_LINE, &xFish)
+        fishDetected := findFishIndicatorX(CATCH_SCAN_AREA, &xFish)
     if !fishDetected {
         if !controlState.hasFish
             return false

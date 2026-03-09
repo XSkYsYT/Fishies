@@ -247,7 +247,7 @@ getSelectedLureSpeedPercent() {
 }
 
 isCatchBarDisplayed() {
-    global CATCH_SCAN_AREA, CATCH_SCAN_LINE, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CATCH_BAR_TOP_LINE
+    global CATCH_SCAN_AREA, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CATCH_BAR_TOP_LINE
 
     activateRoblox()
 
@@ -255,14 +255,6 @@ isCatchBarDisplayed() {
     pixel := UI_CATCH_BAR_PIXEL
     if PixelSearch(&X, &Y, pixel.x, pixel.y, pixel.x, pixel.y, pixel.colour, 2)
         return true
-
-    ; 1px line scan using configured color set.
-    if IsObject(CATCH_SCAN_LINE) && IsObject(CATCH_SCAN_COLOR_SET) {
-        for _, target in CATCH_SCAN_COLOR_SET {
-            if PixelSearch(&foundX, &foundY, CATCH_SCAN_LINE.x1, CATCH_SCAN_LINE.y, CATCH_SCAN_LINE.x2, CATCH_SCAN_LINE.y, target, CATCH_SCAN_COLOR_VARIATION)
-                return true
-        }
-    }
 
     ; Light area fallback (coarse stepping) for harder visual presets.
     if IsObject(CATCH_SCAN_AREA) && IsObject(CATCH_SCAN_COLOR_SET) {
@@ -279,7 +271,7 @@ isCatchBarDisplayed() {
     if isCerebraRodSelected() {
         if isCerebraCatchBarDisplayedByColor()
             return true
-        if findFishIndicatorX(CATCH_BAR_TOP_LINE, &fishX)
+        if findFishIndicatorX(CATCH_SCAN_AREA, &fishX)
             return true
     }
 
