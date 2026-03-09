@@ -164,57 +164,45 @@ findShakeImageBySpec(&outX, &outY, spec) {
 }
 
 autoShake() {
-    global SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK
+    updateStatus("Shaking.")
 
-    previousMouseDelay := A_MouseDelay
-    SetMouseDelay -1
+    activateRoblox()
 
-    try {
-        ensureShakeAreaConfigured()
-        SHAKE_DEBUG_ENABLED := StrLower(Trim(getInfoConfigValue("ShakeScanDebug", "false"))) = "true"
+    shakePin := createShakeAreaPin()
 
-        updateStatus("Shaking.")
+    lastShake := {x: 0, y: 0}
+    success := false
+
+    Loop MAX_SHAKES {
+
+        updateStatus("Shaking: " A_Index "/" MAX_SHAKES)
 
         activateRoblox()
 
-        shakePin := createShakeAreaPin()
-        shakeSearchSpec := getShakeImageSearchSpec(10)
-
-        lastShake := {x: 0, y: 0}
-        success := false
-
-        Loop MAX_SHAKES {
-            updateStatus("Shaking: " A_Index "/" MAX_SHAKES)
-
-            activateRoblox()
-
-            if findShakeImageBySpec(&X, &Y, shakeSearchSpec) {
-                SendEvent "{Click, " X ", " Y "}"
-                lastShake := {x: X, y: Y}
-                MouseMove SHAKE_AREA.x2, SHAKE_AREA.y2
-                Loop 5 {
-                    if !findShakeImageBySpec(&X, &Y, shakeSearchSpec)
-                        break
-                    Sleep 10
-                }
-            }
-            Sleep 10
-
-            if A_Index >= SHAKE_MIN_CLICKS_BEFORE_CATCH_CHECK && isCatchBarDisplayed() {
-                updateStatus("")
-                success := true
-                break
+        if ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, "*10 *TransFF0000 " SHAKE_IMAGE) {
+            SendEvent "{Click, " X ", " Y "}"
+            lastShake := {x: X, y: X}
+            MouseMove SHAKE_AREA.x2, SHAKE_AREA.y2
+            loop 5 {
+                if !ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, "*10 *TransFF0000 " SHAKE_IMAGE)
+                    break
+                Sleep 10
             }
         }
+        Sleep 10
 
-        if IsObject(shakePin)
-            shakePin.Destroy()
+        if isCatchBarDisplayed() {
+            updateStatus("")
+            success := true
+            break
+        }
 
-        updateStatus("")
-        return success
-    } finally {
-        SetMouseDelay previousMouseDelay
     }
+
+    try shakePin.Destroy()
+
+    updateStatus("")
+    return success
 }
 
 isFastLureSpeedRod() {
