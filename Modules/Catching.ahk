@@ -57,10 +57,13 @@ CATCH_USE_FIXED_AREA := true
 CATCH_FIXED_AREA := {x1: 249, y1: 502, x2: 551, y2: 517}
 CATCH_WHITE_VARIATION := 18
 CATCH_CENTER_CUT_RATIO := 0.22
-CATCH_BAR_SCAN_Y_RADIUS := 2
+CATCH_BAR_SCAN_Y_RADIUS := 6
 CATCH_BAR_MIN_WIDTH_PX := 18
 CATCH_BAR_BRIGHT_LUMA_MIN := 210
 CATCH_BAR_GRAY_CHANNEL_DELTA_MAX := 34
+CATCH_BAR_GRAY_LUMA_MIN := 70
+CATCH_BAR_GRAY_LUMA_MAX := 245
+CATCH_BAR_RUN_GAP_TOLERANCE_PX := 4
 
 configureCatchScanLineBeforeStart() {
     global CATCH_SCAN_LINE_CONFIGURED, CATCH_SCAN_LINE, CATCH_SCAN_AREA, CATCH_BAR, CATCH_BAR_TOP_LINE, CATCH_BAR_ARROW_LINE
@@ -910,25 +913,31 @@ findWhiteControlBarBoundsOnLine(y, &bounds) {
 }
 
 findBrightControlBarBoundsOnLine(y, &bounds) {
-    global CATCH_BAR, CATCH_WHITE_VARIATION, CATCH_BAR_MIN_WIDTH_PX
+    global CATCH_BAR, CATCH_BAR_MIN_WIDTH_PX, CATCH_BAR_RUN_GAP_TOLERANCE_PX
 
     runStart := 0
+    runGap := 0
     bestStart := 0
     bestEnd := 0
 
     x := CATCH_BAR.x1
     while x <= CATCH_BAR.x2 {
         color := PixelGetColor(x, y, "RGB")
-        if isLikelyControlBarBrightPixel(color) {
+        if isLikelyControlBarPixel(color) {
             if runStart = 0
                 runStart := x
+            runGap := 0
         } else if runStart > 0 {
-            runEnd := x - 1
-            if (runEnd - runStart) > (bestEnd - bestStart) {
-                bestStart := runStart
-                bestEnd := runEnd
+            runGap += 1
+            if runGap > CATCH_BAR_RUN_GAP_TOLERANCE_PX {
+                runEnd := x - runGap
+                if (runEnd - runStart) > (bestEnd - bestStart) {
+                    bestStart := runStart
+                    bestEnd := runEnd
+                }
+                runStart := 0
+                runGap := 0
             }
-            runStart := 0
         }
         x += 1
     }
@@ -951,11 +960,11 @@ findBrightControlBarBoundsOnLine(y, &bounds) {
     bounds := {x1: bestStart, x2: bestEnd, width: width}
     return true
 }
-
-isLikelyControlBarBrightPixel(color) {
+isLikelyControlBarPixel(color) {
     global CATCH_WHITE_VARIATION, CATCH_BAR_BRIGHT_LUMA_MIN, CATCH_BAR_GRAY_CHANNEL_DELTA_MAX
+    global CATCH_BAR_GRAY_LUMA_MIN, CATCH_BAR_GRAY_LUMA_MAX
 
-    if areColorsSimilar(color, "0xFFFFFF", CATCH_WHITE_VARIATION + 10)
+    if areColorsSimilar(color, "0xFFFFFF", CATCH_WHITE_VARIATION + 12)
         return true
 
     c := colorToInt(color)
@@ -966,9 +975,12 @@ isLikelyControlBarBrightPixel(color) {
     if maxChannelDelta > CATCH_BAR_GRAY_CHANNEL_DELTA_MAX
         return false
 
-    return getPixelLuma(c) >= CATCH_BAR_BRIGHT_LUMA_MIN
-}
+    luma := getPixelLuma(c)
+    if luma >= CATCH_BAR_BRIGHT_LUMA_MIN
+        return true
 
+    return luma >= CATCH_BAR_GRAY_LUMA_MIN && luma <= CATCH_BAR_GRAY_LUMA_MAX
+}
 getControlBarProperties(heartbeatMode := false) {
     global CATCH_BAR, CONTROL_BAR_WIDTH, CONTROL_BAR_HALF_WIDTH
 
