@@ -248,23 +248,26 @@ getSelectedLureSpeedPercent() {
 
 isCatchBarDisplayed() {
     global CATCH_SCAN_AREA, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CATCH_BAR_TOP_LINE
+    global CATCH_BAR_MIN_RUN_RATIO, CATCH_BAR_MIN_RUN_PX
 
     activateRoblox()
 
-    ; Fast legacy point check first to avoid missing quick transitions.
-    pixel := UI_CATCH_BAR_PIXEL
-    if PixelSearch(&X, &Y, pixel.x, pixel.y, pixel.x, pixel.y, pixel.colour, 2)
-        return true
+    barWidth := CATCH_BAR_TOP_LINE.x2 - CATCH_BAR_TOP_LINE.x1 + 1
+    minRun := Round(Max(CATCH_BAR_MIN_RUN_PX, barWidth * CATCH_BAR_MIN_RUN_RATIO))
 
-    ; Light area fallback (coarse stepping) for harder visual presets.
-    if IsObject(CATCH_SCAN_AREA) && IsObject(CATCH_SCAN_COLOR_SET) {
-        y := CATCH_SCAN_AREA.y1
-        while y <= CATCH_SCAN_AREA.y2 {
-            for _, target in CATCH_SCAN_COLOR_SET {
-                if PixelSearch(&fx, &fy, CATCH_SCAN_AREA.x1, y, CATCH_SCAN_AREA.x2, y, target, CATCH_SCAN_COLOR_VARIATION)
-                    return true
-            }
-            y += 4
+    ; Prefer contiguous-run checks instead of single-pixel checks to avoid false positives
+    ; that can prematurely skip shaking.
+    if IsObject(CATCH_SCAN_COLOR_SET) {
+        if hasCatchColorRunOnLine(CATCH_BAR_TOP_LINE.x1, CATCH_BAR_TOP_LINE.y1, CATCH_BAR_TOP_LINE.x2, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, minRun)
+            return true
+
+        yStart := Max(CATCH_SCAN_AREA.y1, CATCH_BAR_TOP_LINE.y1 - 2)
+        yEnd := Min(CATCH_SCAN_AREA.y2, CATCH_BAR_TOP_LINE.y1 + 2)
+        y := yStart
+        while y <= yEnd {
+            if hasCatchColorRunOnLine(CATCH_SCAN_AREA.x1, y, CATCH_SCAN_AREA.x2, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, minRun)
+                return true
+            y += 1
         }
     }
 
