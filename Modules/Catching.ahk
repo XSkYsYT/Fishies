@@ -26,6 +26,8 @@ CATCHING_DIRECTION_SWITCH_COOLDOWN_MS := 14
 CATCHING_MAX_POSITION_JUMP_PX := 140
 CATCH_MAX_DURATION_MS := 35000
 NORMAL_END_NO_STRONG_SIGNAL_MS := 4500
+CATCH_MISSING_FISH_BREAK_FRAMES := 80
+CATCH_STALE_SIGNAL_BREAK_FRAMES := 120
 
 CATCH_ARROW_COLOR := "0x787878"
 CATCH_ARROW_TOLERANCE := 4
@@ -55,6 +57,10 @@ CATCH_USE_FIXED_AREA := true
 CATCH_FIXED_AREA := {x1: 249, y1: 502, x2: 551, y2: 517}
 CATCH_WHITE_VARIATION := 18
 CATCH_CENTER_CUT_RATIO := 0.22
+CATCH_BAR_SCAN_Y_RADIUS := 2
+CATCH_BAR_MIN_WIDTH_PX := 18
+CATCH_BAR_BRIGHT_LUMA_MIN := 210
+CATCH_BAR_GRAY_CHANNEL_DELTA_MAX := 34
 
 configureCatchScanLineBeforeStart() {
     global CATCH_SCAN_LINE_CONFIGURED, CATCH_SCAN_LINE, CATCH_SCAN_AREA, CATCH_BAR, CATCH_BAR_TOP_LINE, CATCH_BAR_ARROW_LINE
@@ -272,13 +278,17 @@ catchFish() {
                 breakReason := "no_fish"
                 break
             }
+            if state.hasFish && missingFishFrames >= CATCH_MISSING_FISH_BREAK_FRAMES {
+                breakReason := "fish_lost"
+                break
+            }
             xFish := Round(clampValue(state.lastFishX + (state.fishVelocity * dt), catchMinX, catchMaxX))
             learning.fallbackFishFrames += 1
         }
         updateFishState(state, xFish, dt)
 
         barMiddleX := false
-        if findWhiteControlBarBoundsOnLine(CATCH_SCAN_LINE.y, &whiteBounds) {
+        if findControlBarBounds(&whiteBounds) {
             CONTROL_BAR_WIDTH := whiteBounds.width
             CONTROL_BAR_HALF_WIDTH := Round(whiteBounds.width / 2)
             barMiddleX := Round((whiteBounds.x1 + whiteBounds.x2) / 2)
@@ -293,8 +303,10 @@ catchFish() {
 
         if !barMiddleX {
             staleSignalFrames += 1
-            if staleSignalFrames > 26
-                staleSignalFrames := 20
+            if staleSignalFrames >= CATCH_STALE_SIGNAL_BREAK_FRAMES {
+                breakReason := "bar_lost"
+                break
+            }
             updateCatchDebugBar(catchMinX, catchMaxX, xFish, state.hasBar ? state.lastBarMiddleX : catchMinX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "no-bar")
             Sleep 2
             continue
@@ -821,8 +833,41 @@ findFishIndicatorX(search, &xFish) {
     return false
 }
 
+findControlBarBounds(&bounds) {
+    global CATCH_SCAN_LINE, CATCH_BAR, CATCH_BAR_SCAN_Y_RADIUS
+
+    best := false
+    bestWidth := 0
+
+    scanCenterY := CATCH_SCAN_LINE.y
+    yStart := Max(CATCH_BAR.y1, scanCenterY - CATCH_BAR_SCAN_Y_RADIUS)
+    yEnd := Min(CATCH_BAR.y2, scanCenterY + CATCH_BAR_SCAN_Y_RADIUS)
+
+    y := yStart
+    while y <= yEnd {
+        if findWhiteControlBarBoundsOnLine(y, &candidate) {
+            if candidate.width > bestWidth {
+                best := candidate
+                bestWidth := candidate.width
+            }
+        } else if findBrightControlBarBoundsOnLine(y, &candidate) {
+            if candidate.width > bestWidth {
+                best := candidate
+                bestWidth := candidate.width
+            }
+        }
+        y += 1
+    }
+
+    if !IsObject(best)
+        return false
+
+    bounds := best
+    return true
+}
+
 findWhiteControlBarBoundsOnLine(y, &bounds) {
-    global CATCH_BAR, CATCH_WHITE_VARIATION
+    global CATCH_BAR, CATCH_WHITE_VARIATION, CATCH_BAR_MIN_WIDTH_PX
 
     runStart := 0
     bestStart := 0
@@ -857,11 +902,71 @@ findWhiteControlBarBoundsOnLine(y, &bounds) {
         return false
 
     width := bestEnd - bestStart + 1
-    if width < 18
+    if width < CATCH_BAR_MIN_WIDTH_PX
         return false
 
     bounds := {x1: bestStart, x2: bestEnd, width: width}
     return true
+}
+
+findBrightControlBarBoundsOnLine(y, &bounds) {
+    global CATCH_BAR, CATCH_WHITE_VARIATION, CATCH_BAR_MIN_WIDTH_PX
+
+    runStart := 0
+    bestStart := 0
+    bestEnd := 0
+
+    x := CATCH_BAR.x1
+    while x <= CATCH_BAR.x2 {
+        color := PixelGetColor(x, y, "RGB")
+        if isLikelyControlBarBrightPixel(color) {
+            if runStart = 0
+                runStart := x
+        } else if runStart > 0 {
+            runEnd := x - 1
+            if (runEnd - runStart) > (bestEnd - bestStart) {
+                bestStart := runStart
+                bestEnd := runEnd
+            }
+            runStart := 0
+        }
+        x += 1
+    }
+
+    if runStart > 0 {
+        runEnd := CATCH_BAR.x2
+        if (runEnd - runStart) > (bestEnd - bestStart) {
+            bestStart := runStart
+            bestEnd := runEnd
+        }
+    }
+
+    if bestEnd <= bestStart
+        return false
+
+    width := bestEnd - bestStart + 1
+    if width < CATCH_BAR_MIN_WIDTH_PX
+        return false
+
+    bounds := {x1: bestStart, x2: bestEnd, width: width}
+    return true
+}
+
+isLikelyControlBarBrightPixel(color) {
+    global CATCH_WHITE_VARIATION, CATCH_BAR_BRIGHT_LUMA_MIN, CATCH_BAR_GRAY_CHANNEL_DELTA_MAX
+
+    if areColorsSimilar(color, "0xFFFFFF", CATCH_WHITE_VARIATION + 10)
+        return true
+
+    c := colorToInt(color)
+    r := (c >> 16) & 0xFF
+    g := (c >> 8) & 0xFF
+    b := c & 0xFF
+    maxChannelDelta := Max(Abs(r - g), Abs(r - b), Abs(g - b))
+    if maxChannelDelta > CATCH_BAR_GRAY_CHANNEL_DELTA_MAX
+        return false
+
+    return getPixelLuma(c) >= CATCH_BAR_BRIGHT_LUMA_MIN
 }
 
 getControlBarProperties(heartbeatMode := false) {
