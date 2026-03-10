@@ -165,11 +165,49 @@ autoShake() {
         Sleep 10
 
         if isCatchBarDisplayed() {
+            updateStatus("")
+            success := true
+            break
+        }
+    }
+
+    try shakePin.Destroy()
+    updateStatus("")
+    return success
+}
+
+isCatchBarDisplayed() {
     global UI_CATCH_BAR_PIXEL
 
     pixel := UI_CATCH_BAR_PIXEL
     activateRoblox()
     return PixelSearch(&X, &Y, pixel.x, pixel.y, pixel.x, pixel.y, pixel.colour, 2)
+}
+
+isCerebraRodSelected() {
+    global SELECTED_ROD_NAME
+
+    rodName := ""
+    try rodName := SELECTED_ROD_NAME
+    if rodName = ""
+        return false
+    return RegExMatch(StrLower(rodName), "\bcerebra\b")
+}
+
+getSelectedLureSpeedPercent() {
+    stats := getSelectedRodStats()
+    if !IsObject(stats)
+        return 0
+    if !stats.HasOwnProp("lure")
+        return 0
+
+    lureRaw := stats.lure
+    try return Number(lureRaw)
+
+    text := Trim("" lureRaw)
+    if RegExMatch(text, "([+\-]?\d+(?:\.\d+)?)", &match)
+        return Number(match[1])
+    return 0
 }
 
 hasCatchColorRunOnLine(x1, y, x2, colorSet, variation, minRun) {
