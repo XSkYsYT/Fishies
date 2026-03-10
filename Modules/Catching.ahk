@@ -58,7 +58,7 @@ CATCH_USE_FIXED_AREA := true
 CATCH_FIXED_AREA := {x1: 249, y1: 502, x2: 551, y2: 517}
 CATCH_WHITE_VARIATION := 18
 CATCH_CENTER_CUT_RATIO := 0.22
-CATCH_CENTER_ZONE_RATIO := 0.90
+CATCH_CENTER_ZONE_RATIO := 0.94
 CATCH_BAR_SCAN_Y_RADIUS := 6
 CATCH_BAR_SCAN_FULL_HEIGHT := true
 CATCH_BAR_SCAN_STEP_PX := 1
@@ -69,8 +69,9 @@ CATCH_BAR_GRAY_LUMA_MIN := 70
 CATCH_BAR_GRAY_LUMA_MAX := 245
 CATCH_BAR_RUN_GAP_TOLERANCE_PX := 4
 CATCH_EDGE_BRAKE_BASE_PX := 6
-CATCH_EDGE_BRAKE_VELOCITY_PX := 20
-CATCH_EDGE_BRAKE_LOOKAHEAD_MS := 85
+CATCH_EDGE_BRAKE_VELOCITY_PX := 28
+CATCH_EDGE_BRAKE_LOOKAHEAD_MS := 105
+CATCH_EDGE_BRAKE_BAR_VELOCITY_PX := 22
 FISH_MARKER_GRAY_CHANNEL_DELTA_MAX := 28
 FISH_MARKER_LUMA_MIN := 55
 FISH_MARKER_LUMA_MAX := 190
@@ -897,7 +898,7 @@ getCenterCutInset(barWidth) {
 }
 
 getVelocityAwareCatchDirection(state, fishX, leftX, rightX, &note := "", &decisionX := 0) {
-    global CATCH_EDGE_BRAKE_BASE_PX, CATCH_EDGE_BRAKE_VELOCITY_PX, CATCH_EDGE_BRAKE_LOOKAHEAD_MS
+    global CATCH_EDGE_BRAKE_BASE_PX, CATCH_EDGE_BRAKE_VELOCITY_PX, CATCH_EDGE_BRAKE_LOOKAHEAD_MS, CATCH_EDGE_BRAKE_BAR_VELOCITY_PX
 
     fishVelocity := 0.0
     barVelocity := 0.0
@@ -906,9 +907,9 @@ getVelocityAwareCatchDirection(state, fishX, leftX, rightX, &note := "", &decisi
         barVelocity := state.barVelocity
     }
 
-    relativeVelocity := fishVelocity - (barVelocity * 0.35)
+    relativeVelocity := (fishVelocity * 0.80) - (barVelocity * 0.65)
     predictedFish := fishX + (relativeVelocity * CATCH_EDGE_BRAKE_LOOKAHEAD_MS)
-    brakePx := Round(Max(3, CATCH_EDGE_BRAKE_BASE_PX + (Abs(relativeVelocity) * CATCH_EDGE_BRAKE_VELOCITY_PX)))
+    brakePx := Round(Max(4, CATCH_EDGE_BRAKE_BASE_PX + (Abs(relativeVelocity) * CATCH_EDGE_BRAKE_VELOCITY_PX) + (Abs(barVelocity) * CATCH_EDGE_BRAKE_BAR_VELOCITY_PX)))
 
     decisionX := Round(clampValue(predictedFish, leftX, rightX))
 
@@ -919,6 +920,17 @@ getVelocityAwareCatchDirection(state, fishX, leftX, rightX, &note := "", &decisi
     if predictedFish <= (leftX + brakePx) {
         note := "BRK-R"
         return 1
+    }
+
+    zoneMid := (leftX + rightX) / 2.0
+    nudgeBand := Max(2, Round((rightX - leftX) * 0.18))
+    if predictedFish > (zoneMid + nudgeBand) {
+        note := "NUD-R"
+        return 1
+    }
+    if predictedFish < (zoneMid - nudgeBand) {
+        note := "NUD-L"
+        return -1
     }
 
     note := "HOLD"
