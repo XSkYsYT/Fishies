@@ -298,16 +298,22 @@ class SetupApp(tk.Tk):
 
     def _build_keys(self) -> None:
         f = self._tab_frame("keys")
-        self._label(f, "Keybinds", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
-        form = tk.Frame(f, bg=COLORS["panel"])
-        form.pack(fill="x", padx=16)
-        for r, (key, label) in enumerate(KEY_FIELDS):
-            self._label(form, label).grid(row=r, column=0, sticky="w", pady=6)
-            e = ttk.Entry(form, width=18, style="Dark.TEntry")
-            e.insert(0, self.cfg.get(key, ""))
-            e.grid(row=r, column=1, sticky="w", padx=10, pady=6)
-            self.key_entries[key] = e
+        self._label(f, "Keybinds (Fixed)", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
+        self._label(f, "These are no longer configurable.", muted=True).pack(anchor="w", padx=16, pady=(0, 8))
+        card = tk.Frame(f, bg=COLORS["panel_soft"], highlightbackground=COLORS["line"], highlightthickness=1)
+        card.pack(fill="x", padx=16, pady=6)
 
+        fixed_lines = [
+            "F1  → Start Macro",
+            "F2  → Pause Macro",
+            "F3  → Exit Macro",
+            "F4  → Open Feedback",
+            "F5  → Reload Macro",
+            "F7  → Redo Detection Setup",
+            "F12 → Toggle Safe Pause",
+        ]
+        for line in fixed_lines:
+            self._label(card, line).pack(anchor="w", padx=12, pady=4)
     def _build_color(self) -> None:
         f = self._tab_frame("color")
         self._label(f, "Color Config", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
@@ -362,7 +368,7 @@ class SetupApp(tk.Tk):
         txt.config(state="disabled")
 
     def save(self) -> None:
-        updates = {k: v.get().strip() for k, v in self.key_entries.items()}
+        updates = {}
         updates["ColorPreset"] = self.color_entry.get().strip() or "default.ini"
         updates["SelectedRod"] = self.rod_combo.get().strip()
         updates["SelectedEnchant"] = self.enchant_combo.get().strip() or "None"

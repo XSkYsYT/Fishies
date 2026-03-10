@@ -94,8 +94,6 @@ applySetupSelectionFromConfig() {
     configureCatchingForRod(stats)
     syncSelectedRodFromServer(false)
 
-    ; Apply saved keybinds immediately after Python setup writes info.ini.
-    try registerConfiguredHotkeys()
     return true
 }
 
@@ -344,22 +342,7 @@ showSetupTab(tabMap, activeTab) {
 }
 
 saveKeybindConfigFromGui(editMap, statusCtrl) {
-    bindings := Map()
-    for cfgKey, editCtrl in editMap {
-        keyText := Trim(editCtrl.Text)
-        if keyText = "" {
-            statusCtrl.Text := "Hotkey cannot be empty."
-            return false
-        }
-        bindings[cfgKey] := keyText
-    }
-
-    if applyConfiguredHotkeysFromGui(bindings) {
-        statusCtrl.Text := "Hotkeys saved."
-        return true
-    }
-
-    statusCtrl.Text := "Failed to save hotkeys."
+    statusCtrl.Text := "Hotkeys are fixed: F1/F2/F3/F4/F5/F7/F12"
     return false
 }
 

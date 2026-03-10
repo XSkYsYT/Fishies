@@ -37,84 +37,19 @@ SendMode "Input"
 MACRO_TITLE := "Fisch Mode"
 CEREBRA_HANDLER_SCRIPT := "cerebra_handler.py"
 CEREBRA_HANDLER_LAUNCHED := false
-HOTKEY_BINDINGS := Map()
 
-
-
-getConfiguredHotkeyValue(configKey, fallback) {
-    value := Trim(getInfoConfigValue(configKey, fallback))
-    return value = "" ? fallback : value
-}
-
-
-normalizeHotkeyName(keyName, fallback) {
-    candidate := Trim("" keyName)
-    if candidate = ""
-        return fallback
-    return candidate
-}
-
-registerSingleHotkey(configKey, fallbackKey, handlerName) {
-    global HOTKEY_BINDINGS
-
-    preferred := normalizeHotkeyName(getConfiguredHotkeyValue(configKey, fallbackKey), fallbackKey)
-    try {
-        handlerFn := Func(handlerName)
-        Hotkey(preferred, handlerFn, "On")
-        HOTKEY_BINDINGS[preferred] := true
-        if preferred != fallbackKey
-            IniWrite(preferred, A_ScriptDir "\info.ini", "", configKey)
-        return true
-    }
-
-    try {
-        handlerFn := Func(handlerName)
-        Hotkey(fallbackKey, handlerFn, "On")
-        HOTKEY_BINDINGS[fallbackKey] := true
-        IniWrite(fallbackKey, A_ScriptDir "\info.ini", "", configKey)
-        return true
-    }
-
-    return false
-}
-
-registerConfiguredHotkeys() {
-    global HOTKEY_BINDINGS
-
-    if !IsObject(HOTKEY_BINDINGS)
-        HOTKEY_BINDINGS := Map()
-
-    for oldKey, _ in HOTKEY_BINDINGS {
-        try Hotkey(oldKey, "Off")
-    }
-    HOTKEY_BINDINGS := Map()
-
-    registerSingleHotkey("HotkeyStart", "F1", "startMacro")
-    registerSingleHotkey("HotkeyPause", "F2", "pauseMacro")
-    registerSingleHotkey("HotkeyExit", "F3", "exitMacro")
-    registerSingleHotkey("HotkeyFeedback", "F4", "openFeedbackGui")
-    registerSingleHotkey("HotkeyReload", "F5", "reloadMacro")
-    registerSingleHotkey("HotkeyRedo", "F7", "redoDetectionSetup")
-    registerSingleHotkey("HotkeySafePause", "F12", "toggleSafePause")
-}
-
-applyConfiguredHotkeysFromGui(bindings) {
-    if !IsObject(bindings)
-        return false
-
-    for cfgKey, value in bindings {
-        IniWrite(value, A_ScriptDir "\info.ini", "", cfgKey)
-    }
-
-    registerConfiguredHotkeys()
-    return true
-}
+F1::startMacro()
+F2::pauseMacro()
+F3::exitMacro()
+F4::openFeedbackGui()
+F5::reloadMacro()
+F7::redoDetectionSetup()
+F12::toggleSafePause()
 
 ; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
 ; MACRO
 ; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
 
-registerConfiguredHotkeys()
 runMacro()
 
 runMacro() {
