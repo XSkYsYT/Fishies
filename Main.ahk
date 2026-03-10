@@ -38,10 +38,9 @@ MACRO_TITLE := "Fisch Mode"
 CEREBRA_HANDLER_SCRIPT := "cerebra_handler.py"
 CEREBRA_HANDLER_LAUNCHED := false
 
-
-; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-; HOTKEYS
-; ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+ENABLE_SHAKING_LOOP := true
+ENABLE_CATCHING_LOOP := true
+ENABLE_REELING_LOOP := true
 
 F1::startMacro()
 F2::pauseMacro()
@@ -73,15 +72,33 @@ runMacro() {
     ensureCatchScanConfigured()
     ensureShakeAreaConfigured()
     openSetupGuiAtRun()
+    loadLoopToggles()
     updateStatus("Finish setup in GUI, then press F1.")
     logEvent("Macro bootstrap complete.")
 }
 
+loadLoopToggles() {
+    global ENABLE_SHAKING_LOOP, ENABLE_CATCHING_LOOP, ENABLE_REELING_LOOP
+
+    ENABLE_SHAKING_LOOP := isToggleEnabled(getInfoConfigValue("EnableShakingLoop", "true"), true)
+    ENABLE_CATCHING_LOOP := isToggleEnabled(getInfoConfigValue("EnableCatchingLoop", "true"), true)
+    ENABLE_REELING_LOOP := isToggleEnabled(getInfoConfigValue("EnableReelingLoop", "true"), true)
+}
+
+isToggleEnabled(value, fallback := true) {
+    text := StrLower(Trim("" value))
+    if text = ""
+        return fallback
+    return !(text = "false" || text = "0" || text = "off" || text = "no")
+}
+
 startMacro(*) {
+    global ENABLE_SHAKING_LOOP, ENABLE_CATCHING_LOOP, ENABLE_REELING_LOOP
+
     initLogger()
     logEvent("Start requested (F1).")
     if !isMacroSetupComplete() {
-        showRodSelectionGui()
+        openSetupGuiAtRun()
         updateStatus("Finish setup in GUI, then press F1.")
         logErrorCode("SETUP_INCOMPLETE", "Start blocked: setup not complete.", "WARN")
         return
@@ -91,6 +108,8 @@ startMacro(*) {
         updateStatus("Rod data synced from server. Starting macro...")
     else
         updateStatus("Using local rod data. Starting macro...")
+
+    loadLoopToggles()
 
     if DetectCerebraRod() {
         if launchCerebraHandlerOnce() {
@@ -112,19 +131,53 @@ startMacro(*) {
         hideUserInterface()
         Sleep 100
         ensureRodEquippedQuick()
-        castLine()
-        try shakeOk := autoShake()
-        catch as err {
-            errMsg := formatAhkError("Shake error", err)
-            logErrorCode("SHAKE_EXCEPTION", errMsg)
-            updateStatus(errMsg)
-            Sleep 1200
-            continue
+        if ENABLE_REELING_LOOP
+            castLine()
+        else
+            updateStatus("Cast/reel loop disabled")
+
+        shakeOk := true
+        if ENABLE_SHAKING_LOOP {
+            try shakeOk := autoShake()
+            catch as err {
+                errMsg := formatAhkError("Shake error", err)
+                logErrorCode("SHAKE_EXCEPTION", errMsg)
+                updateStatus(errMsg)
+                Sleep 1200
+                continue
+            }
+        } else {
+            updateStatus("Shaking loop disabled")
         }
+
         if !shakeOk {
             ; Some rods skip/flash through shake state. Try one catch pass anyway.
             logErrorCode("SHAKE_NO_RESULT", "Shake returned false. Running catch fallback.", "WARN")
             updateStatus("Catch: fallback")
+            if ENABLE_CATCHING_LOOP {
+                try {
+                    catchFish()
+                }
+                catch as err {
+                    errMsg := formatAhkError("Catch error", err)
+                    logErrorCode("CATCH_EXCEPTION", errMsg)
+                    updateStatus(errMsg)
+                    Sleep 1200
+                    continue
+                }
+                maybeClearSessionLogAfterSuccessfulCatch()
+                processCatchLearningCycle()
+            } else {
+                updateStatus("Catching loop disabled")
+            }
+            Sleep 800
+            continue
+        }
+
+        getArrowOffsets()
+
+        updateStatus("Catch: init")
+        if ENABLE_CATCHING_LOOP {
             try {
                 catchFish()
             }
@@ -137,25 +190,9 @@ startMacro(*) {
             }
             maybeClearSessionLogAfterSuccessfulCatch()
             processCatchLearningCycle()
-            Sleep 800
-            continue
+        } else {
+            updateStatus("Catching loop disabled")
         }
-
-        getArrowOffsets()
-
-        updateStatus("Catch: init")
-        try {
-            catchFish()
-        }
-        catch as err {
-            errMsg := formatAhkError("Catch error", err)
-            logErrorCode("CATCH_EXCEPTION", errMsg)
-            updateStatus(errMsg)
-            Sleep 1200
-            continue
-        }
-        maybeClearSessionLogAfterSuccessfulCatch()
-        processCatchLearningCycle()
 
 
 

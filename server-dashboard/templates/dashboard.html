@@ -18,6 +18,7 @@
       </div>
       <div class="topbar-meta">
         <span class="badge">{{ user.username }} ({{ user.role }})</span>
+        <a class="ghost-btn" href="/setup">Open Setup UI</a>
         <form method="post" action="/logout">
           <button type="submit" class="ghost-btn">Log Out</button>
         </form>
@@ -26,18 +27,18 @@
 
     <div class="app-layout">
       <aside class="sidebar">
-        <button type="button" class="nav-link active" data-view="overview">Overview</button>
-        <button type="button" class="nav-link" data-view="rods">Rod Tuning</button>
-        <button type="button" class="nav-link" data-view="enchants">Enchants</button>
-        <button type="button" class="nav-link" data-view="feedback">Feedback Inbox</button>
-        <button type="button" class="nav-link" data-view="chat">Team Chat</button>
+        <button type="button" class="nav-link active" data-view="overview" title="Overview"><span class="nav-ico">🏠</span><span class="nav-txt">Home</span></button>
+        <button type="button" class="nav-link" data-view="rods" title="Rods"><span class="nav-ico">🎣</span><span class="nav-txt">Rods</span></button>
+        <button type="button" class="nav-link" data-view="enchants" title="Enchants"><span class="nav-ico">✨</span><span class="nav-txt">Enchants</span></button>
+        <button type="button" class="nav-link" data-view="feedback" title="Feedback"><span class="nav-ico">📥</span><span class="nav-txt">Inbox</span></button>
+        <button type="button" class="nav-link" data-view="chat" title="Chat"><span class="nav-ico">💬</span><span class="nav-txt">Chat</span></button>
         <button
           type="button"
           class="nav-link {% if user.role != 'owner' %}hidden{% endif %}"
           data-view="users"
           id="users-nav-link"
         >
-          User Access
+          <span class="nav-ico">👥</span><span class="nav-txt">Users</span>
         </button>
       </aside>
 

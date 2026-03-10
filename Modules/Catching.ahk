@@ -26,6 +26,9 @@ CATCHING_DIRECTION_SWITCH_COOLDOWN_MS := 14
 CATCHING_MAX_POSITION_JUMP_PX := 140
 CATCH_MAX_DURATION_MS := 35000
 NORMAL_END_NO_STRONG_SIGNAL_MS := 4500
+CATCH_MISSING_FISH_BREAK_FRAMES := 80
+CATCH_STALE_SIGNAL_BREAK_FRAMES := 120
+CATCH_PREDICTED_BAR_BREAK_FRAMES := 55
 
 CATCH_ARROW_COLOR := "0x787878"
 CATCH_ARROW_TOLERANCE := 4
@@ -55,6 +58,23 @@ CATCH_USE_FIXED_AREA := true
 CATCH_FIXED_AREA := {x1: 249, y1: 502, x2: 551, y2: 517}
 CATCH_WHITE_VARIATION := 18
 CATCH_CENTER_CUT_RATIO := 0.22
+CATCH_CENTER_ZONE_RATIO := 0.90
+CATCH_BAR_SCAN_Y_RADIUS := 6
+CATCH_BAR_SCAN_FULL_HEIGHT := true
+CATCH_BAR_SCAN_STEP_PX := 1
+CATCH_BAR_MIN_WIDTH_PX := 18
+CATCH_BAR_BRIGHT_LUMA_MIN := 210
+CATCH_BAR_GRAY_CHANNEL_DELTA_MAX := 34
+CATCH_BAR_GRAY_LUMA_MIN := 70
+CATCH_BAR_GRAY_LUMA_MAX := 245
+CATCH_BAR_RUN_GAP_TOLERANCE_PX := 4
+CATCH_EDGE_BRAKE_BASE_PX := 6
+CATCH_EDGE_BRAKE_VELOCITY_PX := 20
+CATCH_EDGE_BRAKE_LOOKAHEAD_MS := 85
+FISH_MARKER_GRAY_CHANNEL_DELTA_MAX := 28
+FISH_MARKER_LUMA_MIN := 55
+FISH_MARKER_LUMA_MAX := 190
+FISH_MARKER_MIN_COLUMN_HITS := 4
 
 configureCatchScanLineBeforeStart() {
     global CATCH_SCAN_LINE_CONFIGURED, CATCH_SCAN_LINE, CATCH_SCAN_AREA, CATCH_BAR, CATCH_BAR_TOP_LINE, CATCH_BAR_ARROW_LINE
@@ -193,22 +213,29 @@ applySavedCatchScanArea() {
 }
 
 createCatchScanDebugPins() {
-    global CATCH_SCAN_DEBUG_ENABLED, CATCH_SCAN_AREA, CATCH_SCAN_LINE
+    global CATCH_SCAN_DEBUG_ENABLED, CATCH_SCAN_AREA, CATCH_CENTER_CUT_RATIO
 
     if !CATCH_SCAN_DEBUG_ENABLED
         return false
 
     WinGetClientPos &winX, &winY, , , "ahk_exe RobloxPlayerBeta.exe"
+
     areaPin := Pin(winX + CATCH_SCAN_AREA.x1, winY + CATCH_SCAN_AREA.y1, winX + CATCH_SCAN_AREA.x2, winY + CATCH_SCAN_AREA.y2, 60000, "b1 flash0 c8a2be2")
-    linePin := Pin(winX + CATCH_SCAN_LINE.x1, winY + CATCH_SCAN_LINE.y, winX + CATCH_SCAN_LINE.x2, winY + CATCH_SCAN_LINE.y, 60000, "b1 flash0 cffffff")
-    return {area: areaPin, line: linePin}
+
+    scanWidth := CATCH_SCAN_AREA.x2 - CATCH_SCAN_AREA.x1 + 1
+    insetPx := getCenterCutInset(scanWidth)
+    centerX1 := clampValue(CATCH_SCAN_AREA.x1 + insetPx, CATCH_SCAN_AREA.x1, CATCH_SCAN_AREA.x2)
+    centerX2 := clampValue(CATCH_SCAN_AREA.x2 - insetPx, CATCH_SCAN_AREA.x1, CATCH_SCAN_AREA.x2)
+    centerPin := Pin(winX + centerX1, winY + CATCH_SCAN_AREA.y1, winX + centerX2, winY + CATCH_SCAN_AREA.y2, 60000, "b1 flash0 c5fe87e")
+
+    return {area: areaPin, center: centerPin}
 }
 
 destroyCatchScanDebugPins(pins) {
     if !IsObject(pins)
         return
     try pins.area.Destroy()
-    try pins.line.Destroy()
+    try pins.center.Destroy()
 }
 
 catchFish() {
@@ -216,138 +243,169 @@ catchFish() {
 
     ensureCatchScanConfigured()
     WinGetClientPos &ROBLOX_X, &ROBLOX_Y, , , "ahk_exe RobloxPlayerBeta.exe"
+
     learning := createCatchLearningMetrics()
     loopStartTick := A_TickCount
     state := createCatchingState()
-    heartbeatMode := isHeartbeatControlModeSelected()
+    cerebraMode := isHeartbeatControlModeSelected()
 
     activateRoblox()
-    if heartbeatMode
-        applyHeartbeatControlScaling()
-    else
+    if cerebraMode {
+        if CONTROL_BAR_WIDTH < 40 {
+            CONTROL_BAR_WIDTH := 120
+            CONTROL_BAR_HALF_WIDTH := Round(120 / 2)
+        }
+    } else {
         getArrowOffsets()
-
-    if CONTROL_BAR_WIDTH <= 0 {
-        CONTROL_BAR_HALF_WIDTH := 15
-        CONTROL_BAR_WIDTH := 30
+        if CONTROL_BAR_WIDTH <= 0 {
+            CONTROL_BAR_HALF_WIDTH := 15
+            CONTROL_BAR_WIDTH := 30
+        }
     }
 
     catchMinX := CATCH_BAR_TOP_LINE.x1
     catchMaxX := CATCH_BAR_TOP_LINE.x2
-    initialInset := Round(Max(2, CONTROL_BAR_WIDTH * CATCH_CENTER_CUT_RATIO))
+
+    initialInset := getCenterCutInset(CONTROL_BAR_WIDTH)
     CATCH_BAR_LEFT_X := clampValue(catchMinX + initialInset, catchMinX, catchMaxX)
     CATCH_BAR_RIGHT_X := clampValue(catchMaxX - initialInset, catchMinX, catchMaxX)
-
-    missingFishFrames := 0
-    uiMissingFrames := 0
-    staleSignalFrames := 0
-    startupGraceFrames := 10
-    lastStrongSignalTick := loopStartTick
-    lastTick := A_TickCount
-    breakReason := ""
 
     debugPins := createCatchScanDebugPins()
     showCatchDebugBar()
 
+    missingFishFrames := 0
+    noTargetFrames := 0
+    staleSignalFrames := 0
+    breakReason := ""
+    lastTick := A_TickCount
+
     updateStatus("Catching: loop")
+    activateRoblox()
     Loop {
         now := A_TickCount
         dt := Max(now - lastTick, 1)
         lastTick := now
-        elapsedMs := now - loopStartTick
 
         learning.frames += 1
-        if isCatchBarDisplayed()
-            uiMissingFrames := 0
-        else
-            uiMissingFrames += 1
 
         fishDetected := findFishIndicatorX(CATCH_BAR_TOP_LINE, &xFish)
-        if fishDetected {
+        fishFromFallback := false
+        if !fishDetected {
+            missingFishFrames += 1
+            if !cerebraMode {
+                if !state.hasFish && missingFishFrames >= 18 {
+                    breakReason := "no_fish"
+                    break
+                }
+                if state.hasFish && missingFishFrames >= CATCH_MISSING_FISH_BREAK_FRAMES {
+                    breakReason := "fish_lost"
+                    break
+                }
+                xFish := Round(clampValue(state.lastFishX + (state.fishVelocity * dt), catchMinX, catchMaxX))
+            } else {
+                probeBar := getControlBarProperties(true)
+                if probeBar.isWhite {
+                    xFish := probeBar.x + CONTROL_BAR_HALF_WIDTH
+                } else if state.hasFish {
+                    xFish := Round(clampValue(state.lastFishX + (state.fishVelocity * dt), catchMinX, catchMaxX))
+                } else if state.hasBar {
+                    xFish := Round(clampValue(state.lastBarMiddleX, catchMinX, catchMaxX))
+                } else {
+                    xFish := Round((catchMinX + catchMaxX) / 2)
+                }
+                fishFromFallback := true
+            }
+            learning.fallbackFishFrames += 1
+        } else {
             missingFishFrames := 0
             learning.fishDetectedFrames += 1
-        } else {
-            missingFishFrames += 1
-            if !state.hasFish && missingFishFrames >= 18 {
-                breakReason := "no_fish"
-                break
-            }
-            xFish := Round(clampValue(state.lastFishX + (state.fishVelocity * dt), catchMinX, catchMaxX))
-            learning.fallbackFishFrames += 1
         }
         updateFishState(state, xFish, dt)
 
+        controlBar := getControlBarProperties(cerebraMode)
         barMiddleX := false
-        if findWhiteControlBarBoundsOnLine(CATCH_SCAN_LINE.y, &whiteBounds) {
-            CONTROL_BAR_WIDTH := whiteBounds.width
-            CONTROL_BAR_HALF_WIDTH := Round(whiteBounds.width / 2)
-            barMiddleX := Round((whiteBounds.x1 + whiteBounds.x2) / 2)
+        barLeftEdge := catchMinX
+        barRightEdge := catchMaxX
+
+        if controlBar.isWhite {
+            barMiddleX := controlBar.x + CONTROL_BAR_HALF_WIDTH
+            barLeftEdge := Round(clampValue(controlBar.x, catchMinX, catchMaxX))
+            barRightEdge := Round(clampValue(controlBar.x + CONTROL_BAR_WIDTH, catchMinX, catchMaxX))
+            insetPx := getCenterCutInset(CONTROL_BAR_WIDTH)
+            CATCH_BAR_LEFT_X := clampValue(barLeftEdge + insetPx, catchMinX, catchMaxX)
+            CATCH_BAR_RIGHT_X := clampValue(barRightEdge - insetPx, catchMinX, catchMaxX)
+            staleSignalFrames := 0
+            noTargetFrames := 0
             learning.whiteBarFrames += 1
-            insetPx := Round(Max(2, whiteBounds.width * CATCH_CENTER_CUT_RATIO))
-            CATCH_BAR_LEFT_X := whiteBounds.x1 + insetPx
-            CATCH_BAR_RIGHT_X := whiteBounds.x2 - insetPx
-        } else if state.hasBar {
+        } else {
+            search := CATCH_BAR_ARROW_LINE
+            if !cerebraMode && PixelSearch(&arrowX, &Y, search.x1, search.y1, search.x2, search.y2, "0x7a7879", 10)
+                barMiddleX := estimateBarMiddleFromArrow(arrowX, state)
+            else if state.hasBar
+                barMiddleX := cerebraMode ? state.lastBarMiddleX : (state.lastBarMiddleX + (state.barVelocity * dt))
+
+            if !barMiddleX {
+                staleSignalFrames += 1
+                if staleSignalFrames >= CATCH_STALE_SIGNAL_BREAK_FRAMES {
+                    breakReason := "bar_lost"
+                    break
+                }
+                updateCatchDebugBar(catchMinX, catchMaxX, xFish, state.hasBar ? state.lastBarMiddleX : catchMinX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "no-bar")
+                Sleep 8
+                continue
+            }
+
+            barLeftEdge := Round(clampValue(barMiddleX - CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
+            barRightEdge := Round(clampValue(barMiddleX + CONTROL_BAR_HALF_WIDTH, catchMinX, catchMaxX))
+            insetPx := getCenterCutInset(CONTROL_BAR_WIDTH)
+            CATCH_BAR_LEFT_X := clampValue(barLeftEdge + insetPx, catchMinX, catchMaxX)
+            CATCH_BAR_RIGHT_X := clampValue(barRightEdge - insetPx, catchMinX, catchMaxX)
             learning.multicolorBarFrames += 1
-            barMiddleX := state.lastBarMiddleX + (state.barVelocity * dt)
+
+            if cerebraMode {
+                hasLiveTarget := fishDetected || !fishFromFallback || state.hasBar
+                if hasLiveTarget
+                    noTargetFrames := 0
+                else
+                    noTargetFrames += 1
+                if noTargetFrames >= 45 {
+                    breakReason := "no_target"
+                    break
+                }
+            }
         }
 
-        if !barMiddleX {
-            staleSignalFrames += 1
-            if staleSignalFrames > 26
-                staleSignalFrames := 20
-            updateCatchDebugBar(catchMinX, catchMaxX, xFish, state.hasBar ? state.lastBarMiddleX : catchMinX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "no-bar")
-            Sleep 2
-            continue
-        }
-
-        staleSignalFrames := 0
-        lastStrongSignalTick := now
         updateBarState(state, barMiddleX, dt)
 
-        absError := Abs(xFish - barMiddleX)
-        learning.errorSamples += 1
-        learning.totalAbsErrorPx += absError
-        if absError > learning.maxAbsErrorPx
-            learning.maxAbsErrorPx := absError
-
-        if elapsedMs >= CATCH_MAX_DURATION_MS {
-            breakReason := "max_duration"
-            break
-        }
-        if A_Index > startupGraceFrames && uiMissingFrames >= 30 {
-            breakReason := "ui_missing"
-            break
-        }
-        if elapsedMs > 5000 && (now - lastStrongSignalTick) >= NORMAL_END_NO_STRONG_SIGNAL_MS {
-            breakReason := "no_strong_signal"
-            break
-        }
-
-        CATCH_BAR_LEFT_X := clampValue(CATCH_BAR_LEFT_X, catchMinX, catchMaxX)
-        CATCH_BAR_RIGHT_X := clampValue(CATCH_BAR_RIGHT_X, catchMinX, catchMaxX)
-
-        if xFish > CATCH_BAR_RIGHT_X {
+        if xFish > barRightEdge {
+            updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "EDGE-R")
             setControlDirection(state, 1)
             Sleep 12
             continue
         }
-        if xFish < CATCH_BAR_LEFT_X {
+        if xFish < barLeftEdge {
+            updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "EDGE-L")
             setControlDirection(state, -1)
             Sleep 12
             continue
         }
 
         inCenterZone := (xFish >= CATCH_BAR_LEFT_X && xFish <= CATCH_BAR_RIGHT_X)
-        updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, inCenterZone ? "CENTER" : "TRACK")
+        clickDecision := getVelocityAwareCatchDirection(state, xFish, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, &decisionNote, &decisionX)
+        updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, inCenterZone ? "CENTER " decisionNote : "TRACK " decisionNote, decisionX, clickDecision)
 
         if inCenterZone {
-            if state.clickDown
-                setControlDirection(state, -1)
+            if cerebraMode && fishFromFallback && missingFishFrames >= 2 {
+                setControlDirection(state, Mod(A_Index, 20) < 10 ? 1 : -1)
+                Sleep 8
+                continue
+            }
+            setControlDirection(state, clickDecision)
             Sleep 2
             continue
         }
 
-        setControlDirection(state, xFish > CATCH_BAR_RIGHT_X ? 1 : -1)
+        setControlDirection(state, clickDecision)
         Sleep 6
     }
 
@@ -790,6 +848,55 @@ computePulseDelay(positionError, speedGap) {
     return Round(clampValue(2 + (magnitude * 0.05) + speedBias + nearTargetPenalty, 2, 10))
 }
 
+
+getCenterCutInset(barWidth) {
+    global CATCH_CENTER_ZONE_RATIO, CATCH_CENTER_CUT_RATIO
+
+    width := Max(1, Round(barWidth))
+    zoneRatio := CATCH_CENTER_ZONE_RATIO
+    if zoneRatio <= 0 || zoneRatio >= 1
+        zoneRatio := 1.0 - (CATCH_CENTER_CUT_RATIO * 2)
+    zoneRatio := clampValue(zoneRatio, 0.20, 0.95)
+
+    cutRatio := (1.0 - zoneRatio) / 2.0
+    return Round(Max(2, width * cutRatio))
+}
+
+getVelocityAwareCatchDirection(state, fishX, leftX, rightX, &note := "", &decisionX := 0) {
+    global CATCH_EDGE_BRAKE_BASE_PX, CATCH_EDGE_BRAKE_VELOCITY_PX, CATCH_EDGE_BRAKE_LOOKAHEAD_MS
+
+    fishVelocity := 0.0
+    barVelocity := 0.0
+    if IsObject(state) {
+        fishVelocity := state.fishVelocity
+        barVelocity := state.barVelocity
+    }
+
+    relativeVelocity := fishVelocity - (barVelocity * 0.35)
+    predictedFish := fishX + (relativeVelocity * CATCH_EDGE_BRAKE_LOOKAHEAD_MS)
+    brakePx := Round(Max(3, CATCH_EDGE_BRAKE_BASE_PX + (Abs(relativeVelocity) * CATCH_EDGE_BRAKE_VELOCITY_PX)))
+
+    decisionX := Round(clampValue(predictedFish, leftX, rightX))
+
+    if predictedFish >= (rightX - brakePx) {
+        note := "BRK-L"
+        return -1
+    }
+    if predictedFish <= (leftX + brakePx) {
+        note := "BRK-R"
+        return 1
+    }
+
+    note := "HOLD"
+    if fishX > rightX
+        return 1
+    if fishX < leftX
+        return -1
+
+    note := "WAIT"
+    return 0
+}
+
 clampValue(value, minValue, maxValue) {
     if value < minValue
         return minValue
@@ -799,30 +906,126 @@ clampValue(value, minValue, maxValue) {
 }
 
 findFishIndicatorX(search, &xFish) {
-    global CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE
+    global CATCH_SCAN_AREA, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION
 
-    ; Legacy-first path keeps white-bar behavior stable.
-    if PixelSearch(&foundX, &Y, search.x1, search.y1, search.x2, search.y2, CALIBRATION_FISH_COLOR, CALIBRATION_FISH_TOLERANCE) {
-        xFish := foundX
-        return true
+    area := CATCH_SCAN_AREA
+    if IsObject(search) {
+        if search.HasOwnProp("x1") && search.HasOwnProp("y1") && search.HasOwnProp("x2") && search.HasOwnProp("y2")
+            area := search
     }
 
-    if IsObject(CATCH_SCAN_COLOR_SET) {
-        for _, color in CATCH_SCAN_COLOR_SET {
-            if color = CALIBRATION_FISH_COLOR
-                continue
-            if PixelSearch(&foundX, &Y, search.x1, search.y1, search.x2, search.y2, color, CATCH_SCAN_COLOR_VARIATION) {
-                xFish := foundX
-                return true
+    if isCerebraRodSelected() {
+        if findFishMarkerByGrayColumn(area, &markerX) {
+            xFish := markerX
+            return true
+        }
+        if IsObject(CATCH_SCAN_COLOR_SET) {
+            for _, color in CATCH_SCAN_COLOR_SET {
+                if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, color, CATCH_SCAN_COLOR_VARIATION) {
+                    xFish := foundX
+                    return true
+                }
             }
         }
+        return false
+    }
+
+    if PixelSearch(&foundX, &Y, area.x1, area.y1, area.x2, area.y2, "0x434b5b", 1) {
+        xFish := foundX
+        return true
     }
 
     return false
 }
 
+findFishMarkerByGrayColumn(area, &xFish) {
+    global FISH_MARKER_MIN_COLUMN_HITS
+
+    bestX := 0
+    bestHits := 0
+
+    x := area.x1
+    while x <= area.x2 {
+        hits := 0
+        y := area.y1
+        while y <= area.y2 {
+            color := PixelGetColor(x, y, "RGB")
+            if isLikelyFishMarkerPixel(color)
+                hits += 1
+            y += 1
+        }
+
+        if hits > bestHits {
+            bestHits := hits
+            bestX := x
+        }
+        x += 1
+    }
+
+    if bestHits < FISH_MARKER_MIN_COLUMN_HITS
+        return false
+
+    xFish := bestX
+    return true
+}
+
+isLikelyFishMarkerPixel(color) {
+    global FISH_MARKER_GRAY_CHANNEL_DELTA_MAX, FISH_MARKER_LUMA_MIN, FISH_MARKER_LUMA_MAX
+
+    c := colorToInt(color)
+    r := (c >> 16) & 0xFF
+    g := (c >> 8) & 0xFF
+    b := c & 0xFF
+
+    maxChannelDelta := Max(Abs(r - g), Abs(r - b), Abs(g - b))
+    if maxChannelDelta > FISH_MARKER_GRAY_CHANNEL_DELTA_MAX
+        return false
+
+    luma := getPixelLuma(c)
+    return luma >= FISH_MARKER_LUMA_MIN && luma <= FISH_MARKER_LUMA_MAX
+}
+
+findControlBarBounds(&bounds) {
+    global CATCH_BAR, CATCH_BAR_SCAN_Y_RADIUS, CATCH_BAR_SCAN_FULL_HEIGHT, CATCH_BAR_SCAN_STEP_PX
+
+    best := false
+    bestWidth := 0
+
+    if CATCH_BAR_SCAN_FULL_HEIGHT {
+        yStart := CATCH_BAR.y1
+        yEnd := CATCH_BAR.y2
+    } else {
+        barCenterY := Round((CATCH_BAR.y1 + CATCH_BAR.y2) / 2)
+        yStart := Max(CATCH_BAR.y1, barCenterY - CATCH_BAR_SCAN_Y_RADIUS)
+        yEnd := Min(CATCH_BAR.y2, barCenterY + CATCH_BAR_SCAN_Y_RADIUS)
+    }
+
+    yStep := Max(1, CATCH_BAR_SCAN_STEP_PX)
+    y := yStart
+    while y <= yEnd {
+        if findWhiteControlBarBoundsOnLine(y, &candidate) {
+            if candidate.width > bestWidth {
+                best := candidate
+                bestWidth := candidate.width
+            }
+        } else if findBrightControlBarBoundsOnLine(y, &candidate) {
+            if candidate.width > bestWidth {
+                best := candidate
+                bestWidth := candidate.width
+            }
+        }
+        y += yStep
+    }
+
+    if !IsObject(best)
+        return false
+
+    bounds := best
+    return true
+}
+
 findWhiteControlBarBoundsOnLine(y, &bounds) {
-    global CATCH_BAR, CATCH_WHITE_VARIATION
+    global CATCH_BAR, CATCH_WHITE_VARIATION, CATCH_BAR_MIN_WIDTH_PX
 
     runStart := 0
     bestStart := 0
@@ -857,13 +1060,82 @@ findWhiteControlBarBoundsOnLine(y, &bounds) {
         return false
 
     width := bestEnd - bestStart + 1
-    if width < 18
+    if width < CATCH_BAR_MIN_WIDTH_PX
         return false
 
     bounds := {x1: bestStart, x2: bestEnd, width: width}
     return true
 }
 
+findBrightControlBarBoundsOnLine(y, &bounds) {
+    global CATCH_BAR, CATCH_BAR_MIN_WIDTH_PX, CATCH_BAR_RUN_GAP_TOLERANCE_PX
+
+    runStart := 0
+    runGap := 0
+    bestStart := 0
+    bestEnd := 0
+
+    x := CATCH_BAR.x1
+    while x <= CATCH_BAR.x2 {
+        color := PixelGetColor(x, y, "RGB")
+        if isLikelyControlBarPixel(color) {
+            if runStart = 0
+                runStart := x
+            runGap := 0
+        } else if runStart > 0 {
+            runGap += 1
+            if runGap > CATCH_BAR_RUN_GAP_TOLERANCE_PX {
+                runEnd := x - runGap
+                if (runEnd - runStart) > (bestEnd - bestStart) {
+                    bestStart := runStart
+                    bestEnd := runEnd
+                }
+                runStart := 0
+                runGap := 0
+            }
+        }
+        x += 1
+    }
+
+    if runStart > 0 {
+        runEnd := CATCH_BAR.x2
+        if (runEnd - runStart) > (bestEnd - bestStart) {
+            bestStart := runStart
+            bestEnd := runEnd
+        }
+    }
+
+    if bestEnd <= bestStart
+        return false
+
+    width := bestEnd - bestStart + 1
+    if width < CATCH_BAR_MIN_WIDTH_PX
+        return false
+
+    bounds := {x1: bestStart, x2: bestEnd, width: width}
+    return true
+}
+isLikelyControlBarPixel(color) {
+    global CATCH_WHITE_VARIATION, CATCH_BAR_BRIGHT_LUMA_MIN, CATCH_BAR_GRAY_CHANNEL_DELTA_MAX
+    global CATCH_BAR_GRAY_LUMA_MIN, CATCH_BAR_GRAY_LUMA_MAX
+
+    if areColorsSimilar(color, "0xFFFFFF", CATCH_WHITE_VARIATION + 12)
+        return true
+
+    c := colorToInt(color)
+    r := (c >> 16) & 0xFF
+    g := (c >> 8) & 0xFF
+    b := c & 0xFF
+    maxChannelDelta := Max(Abs(r - g), Abs(r - b), Abs(g - b))
+    if maxChannelDelta > CATCH_BAR_GRAY_CHANNEL_DELTA_MAX
+        return false
+
+    luma := getPixelLuma(c)
+    if luma >= CATCH_BAR_BRIGHT_LUMA_MIN
+        return true
+
+    return luma >= CATCH_BAR_GRAY_LUMA_MIN && luma <= CATCH_BAR_GRAY_LUMA_MAX
+}
 getControlBarProperties(heartbeatMode := false) {
     global CATCH_BAR, CONTROL_BAR_WIDTH, CONTROL_BAR_HALF_WIDTH
 
@@ -1441,7 +1713,7 @@ cerebraHandleMinigameControl(controlState) {
         fishDetected := detectCerebraBlackTextTargetX(&xFish, &textPixels, &textW, &textH)
 
     if !fishDetected
-        fishDetected := findFishIndicatorX(CATCH_BAR_TOP_LINE, &xFish)
+        fishDetected := findFishIndicatorX(CATCH_SCAN_AREA, &xFish)
     if !fishDetected {
         if !controlState.hasFish
             return false

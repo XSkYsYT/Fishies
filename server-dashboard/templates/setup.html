@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fisch Setup Studio</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body class="setup-page" data-username="{{ user.username }}" data-role="{{ user.role }}">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <h1>Fisch Setup Studio</h1>
+        <p>Python-powered setup UI for keybinds, colors, loadout, and logs.</p>
+      </div>
+      <div class="topbar-meta">
+        <span class="badge">{{ user.username }} ({{ user.role }})</span>
+        <a class="ghost-btn" href="/">Dashboard</a>
+        <form method="post" action="/logout">
+          <button type="submit" class="ghost-btn">Log Out</button>
+        </form>
+      </div>
+    </header>
+
+    <main class="setup-shell">
+      <section class="setup-view active" id="setup-home">
+        <h2>Homescreen</h2>
+        <p class="muted-text">Current keybinds loaded from <code>info.ini</code>.</p>
+        <div class="setup-card-grid" id="home-keybind-grid"></div>
+      </section>
+
+      <section class="setup-view" id="setup-keybinds">
+        <h2>Keybinds</h2>
+        <p class="muted-text">Update keybinds and save directly to macro config.</p>
+        <div class="setup-form-grid" id="keybind-form-grid"></div>
+      </section>
+
+      <section class="setup-view" id="setup-colors">
+        <h2>Color Config</h2>
+        <div class="setup-form-grid">
+          <label>
+            Color Preset
+            <input type="text" id="cfg-ColorPreset" placeholder="default.ini" />
+          </label>
+        </div>
+      </section>
+
+      <section class="setup-view" id="setup-loadout">
+        <h2>Rod, Enchant, Bait</h2>
+        <div class="setup-form-grid">
+          <label>
+            Rod
+            <select id="cfg-SelectedRod"></select>
+          </label>
+          <label>
+            Primary Enchant
+            <select id="cfg-SelectedEnchant"></select>
+          </label>
+          <label>
+            Secondary Enchant
+            <select id="cfg-SelectedSecondaryEnchant"></select>
+          </label>
+          <label>
+            Bait
+            <select id="cfg-SelectedBait"></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="setup-view" id="setup-logs">
+        <h2>Recent Logs</h2>
+        <pre id="setup-logs-box" class="setup-logs-box"></pre>
+      </section>
+    </main>
+
+    <footer class="setup-bottom-bar">
+      <p id="setup-status" class="muted-text">Loading setup data…</p>
+      <button type="button" class="primary-btn" id="setup-save">Save Setup</button>
+    </footer>
+
+    <nav class="setup-bottom-nav" aria-label="Setup tabs">
+      <button type="button" class="setup-tab active" data-target="home" title="Home"><span>🏠</span><em>Home</em></button>
+      <button type="button" class="setup-tab" data-target="keybinds" title="Keybinds"><span>⌨️</span><em>Keys</em></button>
+      <button type="button" class="setup-tab" data-target="colors" title="Color Config"><span>🎨</span><em>Colors</em></button>
+      <button type="button" class="setup-tab" data-target="loadout" title="Loadout"><span>🎣</span><em>Loadout</em></button>
+      <button type="button" class="setup-tab" data-target="logs" title="Logs"><span>📜</span><em>Logs</em></button>
+    </nav>
+
+    <script src="/static/setup.js"></script>
+  </body>
+</html>
