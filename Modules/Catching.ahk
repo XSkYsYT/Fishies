@@ -58,7 +58,7 @@ CATCH_USE_FIXED_AREA := true
 CATCH_FIXED_AREA := {x1: 249, y1: 502, x2: 551, y2: 517}
 CATCH_WHITE_VARIATION := 18
 CATCH_CENTER_CUT_RATIO := 0.22
-CATCH_CENTER_ZONE_RATIO := 0.70
+CATCH_CENTER_ZONE_RATIO := 0.90
 CATCH_BAR_SCAN_Y_RADIUS := 6
 CATCH_BAR_SCAN_FULL_HEIGHT := true
 CATCH_BAR_SCAN_STEP_PX := 1
@@ -263,8 +263,9 @@ catchFish() {
     catchMinX := CATCH_BAR_TOP_LINE.x1
     catchMaxX := CATCH_BAR_TOP_LINE.x2
 
-    CATCH_BAR_LEFT_X := clampValue(catchMinX + (CONTROL_BAR_WIDTH * 0.70), catchMinX, catchMaxX)
-    CATCH_BAR_RIGHT_X := clampValue(catchMaxX - (CONTROL_BAR_WIDTH * 0.70), catchMinX, catchMaxX)
+    initialInset := getCenterCutInset(CONTROL_BAR_WIDTH)
+    CATCH_BAR_LEFT_X := clampValue(catchMinX + initialInset, catchMinX, catchMaxX)
+    CATCH_BAR_RIGHT_X := clampValue(catchMaxX - initialInset, catchMinX, catchMaxX)
 
     debugPins := createCatchScanDebugPins()
     showCatchDebugBar()
