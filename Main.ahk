@@ -46,6 +46,38 @@ getConfiguredHotkeyValue(configKey, fallback) {
     return value = "" ? fallback : value
 }
 
+
+normalizeHotkeyName(keyName, fallback) {
+    candidate := Trim("" keyName)
+    if candidate = ""
+        return fallback
+    return candidate
+}
+
+registerSingleHotkey(configKey, fallbackKey, handlerName) {
+    global HOTKEY_BINDINGS
+
+    preferred := normalizeHotkeyName(getConfiguredHotkeyValue(configKey, fallbackKey), fallbackKey)
+    try {
+        handlerFn := Func(handlerName)
+        Hotkey(preferred, handlerFn, "On")
+        HOTKEY_BINDINGS[preferred] := true
+        if preferred != fallbackKey
+            IniWrite(preferred, A_ScriptDir "\info.ini", "", configKey)
+        return true
+    }
+
+    try {
+        handlerFn := Func(handlerName)
+        Hotkey(fallbackKey, handlerFn, "On")
+        HOTKEY_BINDINGS[fallbackKey] := true
+        IniWrite(fallbackKey, A_ScriptDir "\info.ini", "", configKey)
+        return true
+    }
+
+    return false
+}
+
 registerConfiguredHotkeys() {
     global HOTKEY_BINDINGS
 
@@ -57,20 +89,13 @@ registerConfiguredHotkeys() {
     }
     HOTKEY_BINDINGS := Map()
 
-    cfgKeys := ["HotkeyStart", "HotkeyPause", "HotkeyExit", "HotkeyFeedback", "HotkeyReload", "HotkeyRedo", "HotkeySafePause"]
-    fallbacks := ["F1", "F2", "F3", "F4", "F5", "F7", "F12"]
-    handlerNames := ["startMacro", "pauseMacro", "exitMacro", "openFeedbackGui", "reloadMacro", "redoDetectionSetup", "toggleSafePause"]
-
-    i := 1
-    while i <= cfgKeys.Length {
-        keyName := getConfiguredHotkeyValue(cfgKeys[i], fallbacks[i])
-        try {
-            handlerFn := Func(handlerNames[i])
-            Hotkey(keyName, handlerFn, "On")
-            HOTKEY_BINDINGS[keyName] := true
-        }
-        i += 1
-    }
+    registerSingleHotkey("HotkeyStart", "F1", "startMacro")
+    registerSingleHotkey("HotkeyPause", "F2", "pauseMacro")
+    registerSingleHotkey("HotkeyExit", "F3", "exitMacro")
+    registerSingleHotkey("HotkeyFeedback", "F4", "openFeedbackGui")
+    registerSingleHotkey("HotkeyReload", "F5", "reloadMacro")
+    registerSingleHotkey("HotkeyRedo", "F7", "redoDetectionSetup")
+    registerSingleHotkey("HotkeySafePause", "F12", "toggleSafePause")
 }
 
 applyConfiguredHotkeysFromGui(bindings) {
