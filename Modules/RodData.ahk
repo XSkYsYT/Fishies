@@ -10,6 +10,7 @@ SELECTED_ENCHANT_NAME := ""
 SELECTED_SECONDARY_ENCHANT_NAME := ""
 SELECTED_ROD_STATS := false
 SELECTED_ROD_BASE_STATS := false
+SELECTED_BAIT_NAME := "Worm"
 
 SETUP_GUI := false
 MACRO_SETUP_COMPLETE := false
@@ -25,12 +26,75 @@ LAST_CATCH_LEARNING_STATUS := ""
 LAST_CATCH_LEARNING_AT := 0
 
 openSetupGuiAtRun() {
-    global MACRO_SETUP_COMPLETE
+    global MACRO_SETUP_COMPLETE, SELECTED_BAIT_NAME
     loadRodData()
     loadEnchantData()
     loadServerConfig()
     MACRO_SETUP_COMPLETE := false
+    SELECTED_BAIT_NAME := Trim(getInfoConfigValue("SelectedBait", "Worm"))
+    if SELECTED_BAIT_NAME = ""
+        SELECTED_BAIT_NAME := "Worm"
+
+    if launchPythonSetupGui()
+        return true
+
     showRodSelectionGui()
+    return true
+}
+
+
+launchPythonSetupGui() {
+    global MACRO_SETUP_COMPLETE
+
+    enabled := StrLower(Trim(getInfoConfigValue("UsePythonSetupGui", "true")))
+    if !(enabled = "true" || enabled = "1" || enabled = "yes")
+        return false
+
+    scriptPath := A_ScriptDir "\setup_gui.py"
+    if !FileExist(scriptPath)
+        return false
+
+    command := '"' A_ComSpec '" /c py -3 "' scriptPath '"'
+    exitCode := -1
+    try RunWait(command, A_ScriptDir, "", &exitCode)
+    catch
+        return false
+
+    if exitCode != 0
+        return false
+
+    if applySetupSelectionFromConfig() {
+        MACRO_SETUP_COMPLETE := true
+        updateStatus("Setup complete. Press F1 to start the macro.")
+        return true
+    }
+
+    return false
+}
+
+applySetupSelectionFromConfig() {
+    global SELECTED_BAIT_NAME
+
+    rodName := Trim(getInfoConfigValue("SelectedRod", ""))
+    enchantName := Trim(getInfoConfigValue("SelectedEnchant", ""))
+    secondaryEnchantName := Trim(getInfoConfigValue("SelectedSecondaryEnchant", ""))
+    baitName := Trim(getInfoConfigValue("SelectedBait", "Worm"))
+
+    if baitName = ""
+        baitName := "Worm"
+
+    if !setSelectedRod(rodName, enchantName, secondaryEnchantName)
+        return false
+
+    stats := getSelectedRodStats()
+    if !IsObject(stats)
+        return false
+
+    SELECTED_BAIT_NAME := baitName
+    configureCatchingForRod(stats)
+    syncSelectedRodFromServer(false)
+
+    return true
 }
 
 isMacroSetupComplete() {
@@ -97,7 +161,7 @@ loadEnchantData() {
 }
 
 showRodSelectionGui() {
-    global MACRO_TITLE, SELECTED_ROD_NAME, SELECTED_ENCHANT_NAME, SELECTED_SECONDARY_ENCHANT_NAME, SETUP_GUI, MACRO_SETUP_COMPLETE
+    global MACRO_TITLE, SELECTED_ROD_NAME, SELECTED_ENCHANT_NAME, SELECTED_SECONDARY_ENCHANT_NAME, SELECTED_BAIT_NAME, SETUP_GUI, MACRO_SETUP_COMPLETE
 
     loadRodData()
     loadEnchantData()
@@ -118,8 +182,6 @@ showRodSelectionGui() {
     selectedLabel := getRodLabelForName(selectionItems, SELECTED_ROD_NAME)
     selectedIndex := findItemIndex(selectionItems.labels, selectedLabel)
     if selectedIndex = 0
-        selectedIndex := findItemIndex(selectionItems.labels, getRodLabelForName(selectionItems, "Flimsy Rod"))
-    if selectedIndex = 0
         selectedIndex := 1
 
     primaryEnchantNames := getEnchantNames("primary")
@@ -136,32 +198,85 @@ showRodSelectionGui() {
     if selectedSecondaryEnchantIndex = 0
         selectedSecondaryEnchantIndex := 1
 
-    FischGui := Gui("+AlwaysOnTop +ToolWindow", MACRO_TITLE " - Rod Setup")
-    SETUP_GUI := FischGui
-    setGuiDarkBase(FischGui)
+    baitNames := getBaitNames()
+    selectedBaitIndex := findItemIndex(baitNames, SELECTED_BAIT_NAME = "" ? "Worm" : SELECTED_BAIT_NAME)
+    if selectedBaitIndex = 0
+        selectedBaitIndex := 1
 
-    FischGui.SetFont("s10 cBDBDBD", "Segoe UI")
-    FischGui.AddText("xm ym", "1) Choose rod + enchants")
-    FischGui.AddText("xm y+2", "2) Review effective stats")
-    FischGui.AddText("xm y+2", "3) Click Finish Setup and press F1")
+    guiObj := Gui("+AlwaysOnTop +ToolWindow", MACRO_TITLE " - Setup")
+    SETUP_GUI := guiObj
+    setGuiDarkBase(guiObj)
 
-    FischGui.SetFont("s10 cF0F0F0", "Segoe UI")
-    FischGui.AddText("xm y+10", "Rod:")
-    rodCombo := FischGui.AddComboBox("xm w380 c000000", selectionItems.labels)
+    guiObj.SetFont("s10 cF0F2FF", "Segoe UI")
+    guiObj.AddText("xm ym w620 Center", "Fisch Setup")
+    guiObj.SetFont("s9 c8F99C2", "Segoe UI")
+    guiObj.AddText("xm y+4 w620 Center", "Modern setup panel")
+
+    tabHome := []
+    tabColor := []
+    tabRod := []
+    tabLogs := []
+
+    yTop := 62
+    homeTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Homescreen")
+    tabHome.Push(homeTitle)
+    tabHome.Push(guiObj.AddText("xm y+8 w620", "Fixed hotkeys (not configurable):"))
+
+    rowY := yTop + 52
+    fixedHotkeys := [
+        "F1  -> Start Macro",
+        "F2  -> Pause Macro",
+        "F3  -> Exit Macro",
+        "F4  -> Open Feedback",
+        "F5  -> Reload Macro",
+        "F7  -> Redo Detection Setup",
+        "F12 -> Toggle Safe Pause"
+    ]
+    for _, hkLine in fixedHotkeys {
+        lineCtrl := guiObj.AddText("xm y" rowY " w620", hkLine)
+        tabHome.Push(lineCtrl)
+        rowY += 26
+    }
+
+    colorTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Color Config")
+    tabColor.Push(colorTitle)
+    tabColor.Push(guiObj.AddText("xm y+8 w620", "Open the color tuning panel for fish/bar detection."))
+    openColorBtn := guiObj.AddButton("xm y+14 w190", "Open Color Config")
+    redoDetectBtn := guiObj.AddButton("x+10 w220", "Redo Catch + Shake Setup")
+    tabColor.Push(openColorBtn)
+    tabColor.Push(redoDetectBtn)
+    openColorBtn.OnEvent("Click", (*) => showColorConfigGui())
+    redoDetectBtn.OnEvent("Click", (*) => redoDetectionSetup())
+
+    rodTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Rod, Enchant, Bait")
+    tabRod.Push(rodTitle)
+
+    rodLabelY := yTop + 28
+    tabRod.Push(guiObj.AddText("xm y" rodLabelY, "Rod:"))
+    rodCombo := guiObj.AddComboBox("xm y" (rodLabelY + 20) " w380 c000000", selectionItems.labels)
     rodCombo.Choose(selectedIndex)
+    tabRod.Push(rodCombo)
 
-    FischGui.AddText("xm y+8", "Primary Enchant:")
-    enchantDropdown := FischGui.AddDropDownList("xm w380 c000000 Choose" selectedEnchantIndex, primaryEnchantNames)
+    primaryLabelY := rodLabelY + 58
+    tabRod.Push(guiObj.AddText("xm y" primaryLabelY, "Primary Enchant:"))
+    enchantDropdown := guiObj.AddDropDownList("xm y" (primaryLabelY + 20) " w380 c000000 Choose" selectedEnchantIndex, primaryEnchantNames)
+    tabRod.Push(enchantDropdown)
 
-    FischGui.AddText("xm y+8", "Secondary Enchant:")
-    secondaryEnchantDropdown := FischGui.AddDropDownList("xm w380 c000000 Choose" selectedSecondaryEnchantIndex, secondaryEnchantNames)
+    secondaryLabelY := primaryLabelY + 58
+    tabRod.Push(guiObj.AddText("xm y" secondaryLabelY, "Secondary Enchant:"))
+    secondaryEnchantDropdown := guiObj.AddDropDownList("xm y" (secondaryLabelY + 20) " w380 c000000 Choose" selectedSecondaryEnchantIndex, secondaryEnchantNames)
+    tabRod.Push(secondaryEnchantDropdown)
 
-    statsText := FischGui.AddText("xm w470 r15", "")
+    baitLabelY := secondaryLabelY + 58
+    tabRod.Push(guiObj.AddText("xm y" baitLabelY, "Bait:"))
+    baitDropdown := guiObj.AddDropDownList("xm y" (baitLabelY + 20) " w250 c000000 Choose" selectedBaitIndex, baitNames)
+    tabRod.Push(baitDropdown)
 
-    tutorialButton := FischGui.AddButton("xm w120", "Tutorial")
-    colorConfigButton := FischGui.AddButton("x+10 w120", "Color Config")
-    useButton := FischGui.AddButton("x+10 w120 Default", "Finish Setup")
-    cancelButton := FischGui.AddButton("x+10 w90", "Close")
+    statsText := guiObj.AddText("xm y" (baitLabelY + 56) " w620 r8", "")
+    tabRod.Push(statsText)
+
+    tutorialButton := guiObj.AddButton("xm y" (baitLabelY + 216) " w120", "Tutorial")
+    tabRod.Push(tutorialButton)
 
     refreshSetupPreview(statsText, tutorialButton, selectionItems, rodCombo, enchantDropdown, secondaryEnchantDropdown)
     rodCombo.OnEvent("Change", (*) => refreshSetupPreview(statsText, tutorialButton, selectionItems, rodCombo, enchantDropdown, secondaryEnchantDropdown))
@@ -169,22 +284,95 @@ showRodSelectionGui() {
     secondaryEnchantDropdown.OnEvent("Change", (*) => refreshSetupPreview(statsText, tutorialButton, selectionItems, rodCombo, enchantDropdown, secondaryEnchantDropdown))
 
     tutorialButton.OnEvent("Click", (*) => showRodTutorialVideo(resolveRodNameFromSelection(rodCombo.Text, selectionItems)))
-    colorConfigButton.OnEvent("Click", (*) => showColorConfigGui())
-    useButton.OnEvent("Click", (*) => finishSetupSelection(resolveRodNameFromSelection(rodCombo.Text, selectionItems), enchantDropdown.Text, secondaryEnchantDropdown.Text, FischGui))
-    cancelButton.OnEvent("Click", (*) => FischGui.Destroy())
-    FischGui.OnEvent("Close", (*) => onSetupGuiClosed())
-    FischGui.OnEvent("Escape", (*) => FischGui.Destroy())
 
-    applyGuiDarkTheme(FischGui)
-    FischGui.Show("AutoSize Center")
+    logsTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Recent Logs")
+    tabLogs.Push(logsTitle)
+    logsBox := guiObj.AddEdit("xm y" (yTop + 30) " w620 h290 ReadOnly -Wrap", getRecentLogLines(45))
+    tabLogs.Push(logsBox)
+    refreshLogsBtn := guiObj.AddButton("xm y" (yTop + 330) " w140", "Refresh Logs")
+    tabLogs.Push(refreshLogsBtn)
+    refreshLogsBtn.OnEvent("Click", (*) => logsBox.Text := getRecentLogLines(45))
+
+    navY := yTop + 370
+    homeBtn := guiObj.AddButton("xm y" navY " w145", "Home")
+    colorBtn := guiObj.AddButton("x+8 w145", "Color Config")
+    rodBtn := guiObj.AddButton("x+8 w145", "Rod+Enchant+Bait")
+    logsBtn := guiObj.AddButton("x+8 w145", "Recent Logs")
+    closeBtn := guiObj.AddButton("xm y+12 w100", "Close")
+    quickFinishBtn := guiObj.AddButton("x+10 yp w150", "Finish Setup")
+
+    tabMap := Map("home", tabHome, "color", tabColor, "rod", tabRod, "logs", tabLogs)
+    showSetupTab(tabMap, "home")
+
+    homeBtn.OnEvent("Click", (*) => showSetupTab(tabMap, "home"))
+    colorBtn.OnEvent("Click", (*) => showSetupTab(tabMap, "color"))
+    rodBtn.OnEvent("Click", (*) => showSetupTab(tabMap, "rod"))
+    logsBtn.OnEvent("Click", (*) => showSetupTab(tabMap, "logs"))
+
+    closeBtn.OnEvent("Click", (*) => guiObj.Destroy())
+    quickFinishBtn.OnEvent("Click", (*) => finishSetupSelection(resolveRodNameFromSelection(rodCombo.Text, selectionItems), enchantDropdown.Text, secondaryEnchantDropdown.Text, baitDropdown.Text, guiObj))
+    guiObj.OnEvent("Close", (*) => onSetupGuiClosed())
+    guiObj.OnEvent("Escape", (*) => guiObj.Destroy())
+
+    applyGuiDarkTheme(guiObj)
+    guiObj.Show("w650 h520 Center")
 
     if !MACRO_SETUP_COMPLETE
         updateStatus("Finish setup in GUI, then press F1.")
     return true
 }
 
-finishSetupSelection(rodName, enchantName, secondaryEnchantName, FischGui) {
-    global MACRO_TITLE, SELECTED_ROD_STATS, SETUP_GUI, MACRO_SETUP_COMPLETE
+showSetupTab(tabMap, activeTab) {
+    for tabName, controls in tabMap {
+        visible := (tabName = activeTab)
+        for _, ctrl in controls {
+            try ctrl.Visible := visible
+        }
+    }
+}
+
+saveKeybindConfigFromGui(editMap, statusCtrl) {
+    statusCtrl.Text := "Hotkeys are fixed: F1/F2/F3/F4/F5/F7/F12"
+    return false
+}
+
+getBaitNames() {
+    return ["Worm", "Insect", "Minnow", "Shrimp", "Bagel", "Seaweed", "None"]
+}
+
+getRecentLogLines(maxLines := 45) {
+    global LOGGER_FILE_PATH
+
+    initLogger()
+    path := LOGGER_FILE_PATH
+    if path = "" || !FileExist(path)
+        return "No log file available yet."
+
+    text := FileRead(path, "UTF-8")
+    if text = ""
+        return "Log file is empty."
+
+    lines := StrSplit(StrReplace(text, "`r", ""), "`n")
+    filtered := []
+    for _, line in lines {
+        if Trim(line) != ""
+            filtered.Push(line)
+    }
+
+    startIdx := Max(1, filtered.Length - maxLines + 1)
+    output := ""
+    idx := startIdx
+    while idx <= filtered.Length {
+        output .= filtered[idx] "`n"
+        idx += 1
+    }
+
+    return output = "" ? "No recent lines." : Trim(output, "`n")
+}
+
+
+finishSetupSelection(rodName, enchantName, secondaryEnchantName, baitName, FischGui) {
+    global MACRO_TITLE, SELECTED_ROD_STATS, SETUP_GUI, MACRO_SETUP_COMPLETE, SELECTED_BAIT_NAME
 
     if rodName = "" || !setSelectedRod(rodName, enchantName, secondaryEnchantName) {
         MsgBox "Select a valid rod before finishing setup.", MACRO_TITLE, 48
@@ -195,6 +383,9 @@ finishSetupSelection(rodName, enchantName, secondaryEnchantName, FischGui) {
         MsgBox "Rod stats are unavailable.", MACRO_TITLE, 48
         return false
     }
+
+    SELECTED_BAIT_NAME := baitName = "" ? "Worm" : baitName
+    IniWrite(SELECTED_BAIT_NAME, A_ScriptDir "\info.ini", "", "SelectedBait")
 
     configureCatchingForRod(SELECTED_ROD_STATS)
     syncSelectedRodFromServer(false)
