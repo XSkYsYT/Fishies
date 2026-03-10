@@ -34,7 +34,69 @@ openSetupGuiAtRun() {
     SELECTED_BAIT_NAME := Trim(getInfoConfigValue("SelectedBait", "Worm"))
     if SELECTED_BAIT_NAME = ""
         SELECTED_BAIT_NAME := "Worm"
+
+    if launchPythonSetupGui()
+        return true
+
     showRodSelectionGui()
+    return true
+}
+
+
+launchPythonSetupGui() {
+    global MACRO_SETUP_COMPLETE
+
+    enabled := StrLower(Trim(getInfoConfigValue("UsePythonSetupGui", "true")))
+    if !(enabled = "true" || enabled = "1" || enabled = "yes")
+        return false
+
+    scriptPath := A_ScriptDir "\setup_gui.py"
+    if !FileExist(scriptPath)
+        return false
+
+    command := '"' A_ComSpec '" /c py -3 "' scriptPath '"'
+    exitCode := -1
+    try RunWait(command, A_ScriptDir, "", &exitCode)
+    catch
+        return false
+
+    if exitCode != 0
+        return false
+
+    if applySetupSelectionFromConfig() {
+        MACRO_SETUP_COMPLETE := true
+        updateStatus("Setup complete. Press F1 to start the macro.")
+        return true
+    }
+
+    return false
+}
+
+applySetupSelectionFromConfig() {
+    global SELECTED_BAIT_NAME
+
+    rodName := Trim(getInfoConfigValue("SelectedRod", ""))
+    enchantName := Trim(getInfoConfigValue("SelectedEnchant", ""))
+    secondaryEnchantName := Trim(getInfoConfigValue("SelectedSecondaryEnchant", ""))
+    baitName := Trim(getInfoConfigValue("SelectedBait", "Worm"))
+
+    if baitName = ""
+        baitName := "Worm"
+
+    if !setSelectedRod(rodName, enchantName, secondaryEnchantName)
+        return false
+
+    stats := getSelectedRodStats()
+    if !IsObject(stats)
+        return false
+
+    SELECTED_BAIT_NAME := baitName
+    configureCatchingForRod(stats)
+    syncSelectedRodFromServer(false)
+
+    ; Apply saved keybinds immediately after Python setup writes info.ini.
+    try registerConfiguredHotkeys()
+    return true
 }
 
 isMacroSetupComplete() {

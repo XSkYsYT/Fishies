@@ -141,7 +141,7 @@ startMacro(*) {
     initLogger()
     logEvent("Start requested (F1).")
     if !isMacroSetupComplete() {
-        showRodSelectionGui()
+        openSetupGuiAtRun()
         updateStatus("Finish setup in GUI, then press F1.")
         logErrorCode("SETUP_INCOMPLETE", "Start blocked: setup not complete.", "WARN")
         return
