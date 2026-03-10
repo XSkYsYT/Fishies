@@ -18,10 +18,7 @@ SHAKE_DEBUG_ENABLED := false
 SHAKE_USE_FIXED_AREA := true
 SHAKE_FIXED_AREA := {x1: 20, y1: 40, x2: 780, y2: 580}
 SHAKE_IMAGE := 'Assets\Shake.png'
-SHAKE_IMAGE_BASE_WIDTH := 46
-SHAKE_IMAGE_BASE_HEIGHT := 14
-SHAKE_BASE_CLIENT_WIDTH := 800
-SHAKE_BASE_CLIENT_HEIGHT := 600
+SHAKE_IMAGE_SEARCH_SPEC := '*10 *TransFF0000 ' SHAKE_IMAGE
 MAX_SHAKES := 50
 
 CATCH_BAR_MIN_RUN_RATIO := 0.11
@@ -137,81 +134,48 @@ applySavedShakeArea() {
     return true
 }
 
-getShakeImageSearchSpec(variation := 10) {
-    global SHAKE_IMAGE, SHAKE_IMAGE_BASE_WIDTH, SHAKE_IMAGE_BASE_HEIGHT, SHAKE_BASE_CLIENT_WIDTH, SHAKE_BASE_CLIENT_HEIGHT
-
-    WinGetClientPos ,, &clientW, &clientH, "ahk_exe RobloxPlayerBeta.exe"
-    if clientW <= 0 || clientH <= 0
-        return "*" variation " *TransFF0000 " SHAKE_IMAGE
-
-    scaleX := clientW / SHAKE_BASE_CLIENT_WIDTH
-    scaleY := clientH / SHAKE_BASE_CLIENT_HEIGHT
-    targetW := Round(Max(8, SHAKE_IMAGE_BASE_WIDTH * scaleX))
-    targetH := Round(Max(6, SHAKE_IMAGE_BASE_HEIGHT * scaleY))
-
-    return "*" variation " *TransFF0000 *w" targetW " *h" targetH " " SHAKE_IMAGE
-}
-
-findShakeImageBySpec(&outX, &outY, spec) {
-    global SHAKE_AREA, SHAKE_IMAGE
-
-    if ImageSearch(&outX, &outY, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, spec)
-        return true
-
-    fallbackSpec := "*10 *TransFF0000 " SHAKE_IMAGE
-    return ImageSearch(&outX, &outY, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, fallbackSpec)
-}
-
 autoShake() {
-    previousMouseDelay := A_MouseDelay
-    SetMouseDelay -1
+    global SHAKE_IMAGE_SEARCH_SPEC
 
-    try {
-        ensureShakeAreaConfigured()
-        SHAKE_DEBUG_ENABLED := StrLower(Trim(getInfoConfigValue("ShakeScanDebug", "false"))) = "true"
+    updateStatus("Shaking.")
 
-        updateStatus("Shaking.")
+    activateRoblox()
+
+    shakePin := createShakeAreaPin()
+
+    lastShake := {x: 0, y: 0}
+    success := false
+
+    Loop MAX_SHAKES {
+
+        updateStatus("Shaking: " A_Index "/" MAX_SHAKES)
 
         activateRoblox()
 
-        shakePin := createShakeAreaPin()
-        shakeSearchSpec := getShakeImageSearchSpec(10)
-
-        lastShake := {x: 0, y: 0}
-        success := false
-
-        Loop MAX_SHAKES {
-            updateStatus("Shaking: " A_Index "/" MAX_SHAKES)
-
-            activateRoblox()
-
-            if findShakeImageBySpec(&X, &Y, shakeSearchSpec) {
-                SendEvent "{Click, " X ", " Y "}"
-                lastShake := {x: X, y: Y}
-                MouseMove SHAKE_AREA.x2, SHAKE_AREA.y2
-                Loop 5 {
-                    if !findShakeImageBySpec(&X, &Y, shakeSearchSpec)
-                        break
-                    Sleep 10
-                }
-            }
-            Sleep 10
-
-            if isCatchBarDisplayed() {
-                updateStatus("")
-                success := true
-                break
+        if ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, SHAKE_IMAGE_SEARCH_SPEC) {
+            SendEvent "{Click, " X ", " Y "}"
+            lastShake := {x: X, y: X}
+            MouseMove SHAKE_AREA.x2, SHAKE_AREA.y2
+            loop 5 {
+                if !ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, SHAKE_IMAGE_SEARCH_SPEC)
+                    break
+                Sleep 10
             }
         }
+        Sleep 10
 
-        if IsObject(shakePin)
-            shakePin.Destroy()
+        if isCatchBarDisplayed() {
+            updateStatus("")
+            success := true
+            break
+        }
 
-        updateStatus("")
-        return success
-    } finally {
-        SetMouseDelay previousMouseDelay
     }
+
+    try shakePin.Destroy()
+
+    updateStatus("")
+    return success
 }
 
 isFastLureSpeedRod() {
@@ -247,39 +211,34 @@ getSelectedLureSpeedPercent() {
 }
 
 isCatchBarDisplayed() {
-    global CATCH_SCAN_AREA, CATCH_SCAN_LINE, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CATCH_BAR_TOP_LINE
+    global CATCH_SCAN_AREA, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CATCH_BAR_TOP_LINE
+    global CATCH_BAR_MIN_RUN_RATIO, CATCH_BAR_MIN_RUN_PX
 
     activateRoblox()
 
-    ; Fast legacy point check first to avoid missing quick transitions.
-    pixel := UI_CATCH_BAR_PIXEL
-    if PixelSearch(&X, &Y, pixel.x, pixel.y, pixel.x, pixel.y, pixel.colour, 2)
-        return true
+    barWidth := CATCH_BAR_TOP_LINE.x2 - CATCH_BAR_TOP_LINE.x1 + 1
+    minRun := Round(Max(CATCH_BAR_MIN_RUN_PX, barWidth * CATCH_BAR_MIN_RUN_RATIO))
 
-    ; 1px line scan using configured color set.
-    if IsObject(CATCH_SCAN_LINE) && IsObject(CATCH_SCAN_COLOR_SET) {
-        for _, target in CATCH_SCAN_COLOR_SET {
-            if PixelSearch(&foundX, &foundY, CATCH_SCAN_LINE.x1, CATCH_SCAN_LINE.y, CATCH_SCAN_LINE.x2, CATCH_SCAN_LINE.y, target, CATCH_SCAN_COLOR_VARIATION)
+    ; Prefer contiguous-run checks instead of single-pixel checks to avoid false positives
+    ; that can prematurely skip shaking.
+    if IsObject(CATCH_SCAN_COLOR_SET) {
+        if hasCatchColorRunOnLine(CATCH_BAR_TOP_LINE.x1, CATCH_BAR_TOP_LINE.y1, CATCH_BAR_TOP_LINE.x2, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, minRun)
+            return true
+
+        yStart := Max(CATCH_SCAN_AREA.y1, CATCH_BAR_TOP_LINE.y1 - 2)
+        yEnd := Min(CATCH_SCAN_AREA.y2, CATCH_BAR_TOP_LINE.y1 + 2)
+        y := yStart
+        while y <= yEnd {
+            if hasCatchColorRunOnLine(CATCH_SCAN_AREA.x1, y, CATCH_SCAN_AREA.x2, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, minRun)
                 return true
-        }
-    }
-
-    ; Light area fallback (coarse stepping) for harder visual presets.
-    if IsObject(CATCH_SCAN_AREA) && IsObject(CATCH_SCAN_COLOR_SET) {
-        y := CATCH_SCAN_AREA.y1
-        while y <= CATCH_SCAN_AREA.y2 {
-            for _, target in CATCH_SCAN_COLOR_SET {
-                if PixelSearch(&fx, &fy, CATCH_SCAN_AREA.x1, y, CATCH_SCAN_AREA.x2, y, target, CATCH_SCAN_COLOR_VARIATION)
-                    return true
-            }
-            y += 4
+            y += 1
         }
     }
 
     if isCerebraRodSelected() {
         if isCerebraCatchBarDisplayedByColor()
             return true
-        if findFishIndicatorX(CATCH_BAR_TOP_LINE, &fishX)
+        if findFishIndicatorX(CATCH_SCAN_AREA, &fishX)
             return true
     }
 
