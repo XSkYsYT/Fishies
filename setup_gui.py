@@ -36,6 +36,26 @@ KEY_FIELDS = [
     ("HotkeyRedo", "Redo Setup"),
     ("HotkeySafePause", "Safe Pause"),
 ]
+TAB_META = [
+    ("home", "🏠", "Home"),
+    ("keys", "⌨", "Keys"),
+    ("color", "🎨", "Color"),
+    ("loadout", "🎣", "Loadout"),
+    ("logs", "📜", "Logs"),
+]
+
+COLORS = {
+    "bg": "#070b12",
+    "bg2": "#0b1220",
+    "panel": "#101a2b",
+    "panel_soft": "#18253a",
+    "line": "#2a3f5f",
+    "text": "#e4eefc",
+    "muted": "#93a8c2",
+    "accent": "#65b9ff",
+    "accent2": "#2c97ff",
+    "success": "#57d8ad",
+}
 
 
 def read_ini() -> dict[str, str]:
@@ -64,8 +84,8 @@ def write_ini(updates: dict[str, str]) -> None:
         INFO_INI.write_text("\n".join(f"{k}={merged.get(k,'')}" for k in DEFAULTS) + "\n", encoding="utf-8")
         return
 
-    out = []
-    touched = set()
+    out: list[str] = []
+    touched: set[str] = set()
     for raw in existing:
         line = raw.strip().lstrip("\ufeff")
         if not line or line.startswith((";", "#", "[")) or "=" not in line:
@@ -112,9 +132,9 @@ class SetupApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.saved = False
-        self.title("Fisch Mode - Python Setup")
-        self.geometry("760x560")
-        self.configure(bg="#0b1220")
+        self.title("Fisch Setup Studio")
+        self.geometry("860x620")
+        self.configure(bg=COLORS["bg"])
         self.resizable(False, False)
 
         self.cfg = read_ini()
@@ -123,92 +143,191 @@ class SetupApp(tk.Tk):
 
         self.tab_frames: dict[str, tk.Frame] = {}
         self.key_entries: dict[str, ttk.Entry] = {}
+        self.tab_buttons: dict[str, tk.Button] = {}
+        self.active_tab = "home"
 
-        shell = tk.Frame(self, bg="#0b1220")
-        shell.pack(fill="both", expand=True, padx=14, pady=12)
-
-        title = tk.Label(shell, text="Fisch Setup", font=("Segoe UI", 18, "bold"), fg="#dbeafe", bg="#0b1220")
-        title.pack(anchor="w")
-
-        self.content = tk.Frame(shell, bg="#101a2b", highlightbackground="#243b5c", highlightthickness=1)
-        self.content.pack(fill="both", expand=True, pady=(8, 76))
-
-        for tab in ("home", "keys", "color", "loadout", "logs"):
-            frm = tk.Frame(self.content, bg="#101a2b")
-            self.tab_frames[tab] = frm
-            frm.place(relx=0, rely=0, relwidth=1, relheight=1)
-
+        self._setup_styles()
+        self._build_layout()
+        self._build_tabs()
         self._build_home()
         self._build_keys()
         self._build_color()
         self._build_loadout()
         self._build_logs()
 
-        bottom = tk.Frame(shell, bg="#0f172a")
-        bottom.place(relx=0, rely=1, relwidth=1, y=-62, height=56)
-        ttk.Button(bottom, text="Save & Finish", command=self.save).pack(side="right", padx=12, pady=10)
-
-        nav = tk.Frame(shell, bg="#0f172a", highlightbackground="#243b5c", highlightthickness=1)
-        nav.place(relx=0.5, rely=1, anchor="s", y=-4, width=540, height=48)
-        tabs = [("🏠", "home"), ("⌨", "keys"), ("🎨", "color"), ("🎣", "loadout"), ("📜", "logs")]
-        for icon, tab in tabs:
-            ttk.Button(nav, text=icon, width=6, command=lambda t=tab: self.show_tab(t)).pack(side="left", padx=8, pady=8)
-
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.show_tab("home")
+
+    def _setup_styles(self) -> None:
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure(
+            "Dark.TEntry",
+            fieldbackground=COLORS["bg2"],
+            foreground=COLORS["text"],
+            bordercolor=COLORS["line"],
+            lightcolor=COLORS["line"],
+            darkcolor=COLORS["line"],
+            insertcolor=COLORS["text"],
+            padding=6,
+        )
+        style.configure(
+            "Dark.TCombobox",
+            fieldbackground=COLORS["bg2"],
+            background=COLORS["bg2"],
+            foreground=COLORS["text"],
+            arrowcolor=COLORS["accent"],
+            bordercolor=COLORS["line"],
+            lightcolor=COLORS["line"],
+            darkcolor=COLORS["line"],
+            padding=4,
+        )
+
+    def _label(self, parent: tk.Widget, text: str, *, size: int = 10, bold: bool = False, muted: bool = False) -> tk.Label:
+        return tk.Label(
+            parent,
+            text=text,
+            bg=parent.cget("bg"),
+            fg=COLORS["muted"] if muted else COLORS["text"],
+            font=("Segoe UI", size, "bold" if bold else "normal"),
+        )
+
+    def _build_layout(self) -> None:
+        shell = tk.Frame(self, bg=COLORS["bg"])
+        shell.pack(fill="both", expand=True, padx=16, pady=14)
+
+        topbar = tk.Frame(shell, bg=COLORS["panel"], highlightbackground=COLORS["line"], highlightthickness=1)
+        topbar.pack(fill="x")
+
+        self._label(topbar, "Fisch Setup Studio", size=18, bold=True).pack(anchor="w", padx=16, pady=(12, 2))
+        self._label(topbar, "Dashboard-style setup for keybinds, color config, loadout and logs.", muted=True).pack(
+            anchor="w", padx=16, pady=(0, 12)
+        )
+
+        self.content = tk.Frame(shell, bg=COLORS["panel"], highlightbackground=COLORS["line"], highlightthickness=1)
+        self.content.pack(fill="both", expand=True, pady=(10, 108))
+
+        self.footer = tk.Frame(shell, bg=COLORS["panel"], highlightbackground=COLORS["line"], highlightthickness=1)
+        self.footer.place(relx=0, rely=1, relwidth=1, y=-82, height=62)
+
+        self.status = self._label(self.footer, "Ready", muted=True)
+        self.status.pack(side="left", padx=14)
+
+        save_btn = tk.Button(
+            self.footer,
+            text="Save & Finish",
+            command=self.save,
+            bg=COLORS["accent2"],
+            fg="#06111f",
+            activebackground=COLORS["accent"],
+            activeforeground="#06111f",
+            relief="flat",
+            padx=14,
+            pady=8,
+            font=("Segoe UI", 10, "bold"),
+            cursor="hand2",
+        )
+        save_btn.pack(side="right", padx=14)
+
+        self.nav = tk.Frame(shell, bg=COLORS["panel"], highlightbackground=COLORS["line"], highlightthickness=1)
+        self.nav.place(relx=0.5, rely=1, anchor="s", y=-8, width=620, height=58)
+
+    def _build_tabs(self) -> None:
+        for tab_name, icon, label in TAB_META:
+            btn = tk.Button(
+                self.nav,
+                text=f"{icon}\n{label}",
+                command=lambda t=tab_name: self.show_tab(t),
+                relief="flat",
+                bd=0,
+                bg=COLORS["panel"],
+                fg=COLORS["muted"],
+                activebackground=COLORS["panel_soft"],
+                activeforeground=COLORS["text"],
+                font=("Segoe UI", 9, "bold"),
+                cursor="hand2",
+                width=10,
+                height=2,
+            )
+            btn.pack(side="left", padx=8, pady=6)
+            self.tab_buttons[tab_name] = btn
+
+    def _tab_frame(self, key: str) -> tk.Frame:
+        frm = tk.Frame(self.content, bg=COLORS["panel"])
+        frm.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.tab_frames[key] = frm
+        return frm
+
+    def show_tab(self, tab: str) -> None:
+        self.active_tab = tab
+        self.tab_frames[tab].tkraise()
+        for name, btn in self.tab_buttons.items():
+            is_active = name == tab
+            btn.configure(
+                bg=COLORS["panel_soft"] if is_active else COLORS["panel"],
+                fg=COLORS["text"] if is_active else COLORS["muted"],
+            )
 
     def on_close(self) -> None:
         self.destroy()
 
-    def show_tab(self, tab: str) -> None:
-        self.tab_frames[tab].tkraise()
-
     def _build_home(self) -> None:
-        f = self.tab_frames["home"]
-        tk.Label(f, text="Homescreen", font=("Segoe UI", 14, "bold"), fg="#dbeafe", bg="#101a2b").pack(anchor="w", padx=16, pady=(14, 6))
-        tk.Label(f, text="Current keybinds", fg="#93a8c2", bg="#101a2b").pack(anchor="w", padx=16)
-        grid = tk.Frame(f, bg="#101a2b")
+        f = self._tab_frame("home")
+        self._label(f, "Homescreen", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 6))
+        self._label(f, "Current keybind map", muted=True).pack(anchor="w", padx=16)
+
+        grid = tk.Frame(f, bg=COLORS["panel"])
         grid.pack(fill="x", padx=16, pady=10)
+
         for idx, (key, label) in enumerate(KEY_FIELDS):
-            card = tk.Frame(grid, bg="#18253a", highlightbackground="#2a3f5f", highlightthickness=1)
+            card = tk.Frame(grid, bg=COLORS["panel_soft"], highlightbackground=COLORS["line"], highlightthickness=1)
             card.grid(row=idx // 3, column=idx % 3, sticky="nsew", padx=6, pady=6)
-            tk.Label(card, text=label, fg="#9fb7d9", bg="#18253a").pack(padx=12, pady=(10, 2))
-            tk.Label(card, text=self.cfg.get(key, ""), fg="#e2e8f0", bg="#18253a", font=("Segoe UI", 11, "bold")).pack(padx=12, pady=(0, 10))
+            self._label(card, label, muted=True).pack(padx=12, pady=(10, 2))
+            tk.Label(
+                card,
+                text=self.cfg.get(key, ""),
+                fg=COLORS["success"],
+                bg=COLORS["panel_soft"],
+                font=("Segoe UI", 12, "bold"),
+            ).pack(padx=12, pady=(0, 10))
         for col in range(3):
             grid.grid_columnconfigure(col, weight=1)
 
     def _build_keys(self) -> None:
-        f = self.tab_frames["keys"]
-        tk.Label(f, text="Keybinds", font=("Segoe UI", 14, "bold"), fg="#dbeafe", bg="#101a2b").pack(anchor="w", padx=16, pady=(14, 8))
-        form = tk.Frame(f, bg="#101a2b")
+        f = self._tab_frame("keys")
+        self._label(f, "Keybinds", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
+        form = tk.Frame(f, bg=COLORS["panel"])
         form.pack(fill="x", padx=16)
         for r, (key, label) in enumerate(KEY_FIELDS):
-            tk.Label(form, text=label, fg="#cbd5e1", bg="#101a2b").grid(row=r, column=0, sticky="w", pady=5)
-            e = ttk.Entry(form, width=18)
+            self._label(form, label).grid(row=r, column=0, sticky="w", pady=6)
+            e = ttk.Entry(form, width=18, style="Dark.TEntry")
             e.insert(0, self.cfg.get(key, ""))
-            e.grid(row=r, column=1, sticky="w", padx=10, pady=5)
+            e.grid(row=r, column=1, sticky="w", padx=10, pady=6)
             self.key_entries[key] = e
 
     def _build_color(self) -> None:
-        f = self.tab_frames["color"]
-        tk.Label(f, text="Color Config", font=("Segoe UI", 14, "bold"), fg="#dbeafe", bg="#101a2b").pack(anchor="w", padx=16, pady=(14, 8))
-        row = tk.Frame(f, bg="#101a2b")
+        f = self._tab_frame("color")
+        self._label(f, "Color Config", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
+        row = tk.Frame(f, bg=COLORS["panel"])
         row.pack(fill="x", padx=16)
-        tk.Label(row, text="ColorPreset", fg="#cbd5e1", bg="#101a2b").pack(side="left")
-        self.color_entry = ttk.Entry(row, width=32)
+        self._label(row, "ColorPreset").pack(side="left")
+        self.color_entry = ttk.Entry(row, width=34, style="Dark.TEntry")
         self.color_entry.insert(0, self.cfg.get("ColorPreset", "default.ini"))
         self.color_entry.pack(side="left", padx=10)
 
     def _build_loadout(self) -> None:
-        f = self.tab_frames["loadout"]
-        tk.Label(f, text="Rod, Enchant, Bait", font=("Segoe UI", 14, "bold"), fg="#dbeafe", bg="#101a2b").pack(anchor="w", padx=16, pady=(14, 8))
-        form = tk.Frame(f, bg="#101a2b")
+        f = self._tab_frame("loadout")
+        self._label(f, "Rod, Enchant, Bait", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
+        form = tk.Frame(f, bg=COLORS["panel"])
         form.pack(fill="x", padx=16)
 
-        self.rod_combo = ttk.Combobox(form, values=self.rods, state="readonly", width=30)
-        self.enchant_combo = ttk.Combobox(form, values=["None", *self.enchants], state="readonly", width=30)
-        self.secondary_combo = ttk.Combobox(form, values=["None", *self.enchants], state="readonly", width=30)
-        self.bait_combo = ttk.Combobox(form, values=BAITS, state="readonly", width=30)
+        self.rod_combo = ttk.Combobox(form, values=self.rods, state="readonly", width=32, style="Dark.TCombobox")
+        self.enchant_combo = ttk.Combobox(form, values=["None", *self.enchants], state="readonly", width=32, style="Dark.TCombobox")
+        self.secondary_combo = ttk.Combobox(form, values=["None", *self.enchants], state="readonly", width=32, style="Dark.TCombobox")
+        self.bait_combo = ttk.Combobox(form, values=BAITS, state="readonly", width=32, style="Dark.TCombobox")
 
         rows = [
             ("Rod", self.rod_combo, self.cfg.get("SelectedRod", "")),
@@ -216,18 +335,28 @@ class SetupApp(tk.Tk):
             ("Secondary Enchant", self.secondary_combo, self.cfg.get("SelectedSecondaryEnchant", "None")),
             ("Bait", self.bait_combo, self.cfg.get("SelectedBait", "Worm")),
         ]
+
         for i, (label, widget, val) in enumerate(rows):
-            tk.Label(form, text=label, fg="#cbd5e1", bg="#101a2b").grid(row=i, column=0, sticky="w", pady=6)
-            widget.grid(row=i, column=1, sticky="w", padx=10, pady=6)
+            self._label(form, label).grid(row=i, column=0, sticky="w", pady=8)
+            widget.grid(row=i, column=1, sticky="w", padx=12, pady=8)
             if val in widget.cget("values"):
                 widget.set(val)
             elif widget.cget("values"):
                 widget.current(0)
 
     def _build_logs(self) -> None:
-        f = self.tab_frames["logs"]
-        tk.Label(f, text="Recent Logs", font=("Segoe UI", 14, "bold"), fg="#dbeafe", bg="#101a2b").pack(anchor="w", padx=16, pady=(14, 8))
-        txt = tk.Text(f, bg="#0b1220", fg="#cbd5e1", insertbackground="#cbd5e1", wrap="word")
+        f = self._tab_frame("logs")
+        self._label(f, "Recent Logs", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
+        txt = tk.Text(
+            f,
+            bg=COLORS["bg2"],
+            fg=COLORS["text"],
+            insertbackground=COLORS["text"],
+            wrap="word",
+            relief="flat",
+            highlightbackground=COLORS["line"],
+            highlightthickness=1,
+        )
         txt.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         txt.insert("1.0", recent_logs())
         txt.config(state="disabled")
@@ -245,12 +374,14 @@ class SetupApp(tk.Tk):
             return
 
         write_ini(updates)
+        self.status.configure(text="Saved to info.ini. Closing setup...")
         self.saved = True
         self.destroy()
 
 
 if __name__ == "__main__":
     import sys
+
     app = SetupApp()
     app.mainloop()
     sys.exit(0 if app.saved else 2)
