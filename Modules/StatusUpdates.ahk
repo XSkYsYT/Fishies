@@ -144,6 +144,8 @@ showCatchDebugBar() {
     guiObj.AddText("xm y+6 w" CATCH_DEBUG_TRACK_W " h24 Background141414")
     CATCH_DEBUG_BOUND_LEFT := guiObj.AddText("x0 y0 w2 h24 BackgroundFFAA00")
     CATCH_DEBUG_BOUND_RIGHT := guiObj.AddText("x0 y0 w2 h24 BackgroundFFAA00")
+    CATCH_DEBUG_CLICK_TARGET := guiObj.AddText("x0 y0 w1 h24 Background8A8A8A")
+    CATCH_DEBUG_CLICK_SIGNAL := guiObj.AddText("x0 y0 w2 h24 BackgroundFF4B4B")
     CATCH_DEBUG_FISH := guiObj.AddText("x0 y0 w2 h24 Background00FF9D")
     CATCH_DEBUG_BAR := guiObj.AddText("x0 y0 w2 h24 Background00C6FF")
 
@@ -172,9 +174,10 @@ mapCatchDebugX(gameX) {
     return Round(((clamped - CATCH_DEBUG_MIN_X) / span) * (CATCH_DEBUG_TRACK_W - 1))
 }
 
-updateCatchDebugBar(catchMinX, catchMaxX, fishX, barMiddleX, leftX, rightX, note := "") {
+updateCatchDebugBar(catchMinX, catchMaxX, fishX, barMiddleX, leftX, rightX, note := "", clickTargetX := 0, clickDirection := 0) {
     global CATCH_DEBUG_GUI, CATCH_DEBUG_TRACK_W, CATCH_DEBUG_MIN_X, CATCH_DEBUG_MAX_X
     global CATCH_DEBUG_BOUND_LEFT, CATCH_DEBUG_BOUND_RIGHT, CATCH_DEBUG_FISH, CATCH_DEBUG_BAR, CATCH_DEBUG_TEXT
+    global CATCH_DEBUG_CLICK_TARGET, CATCH_DEBUG_CLICK_SIGNAL
     global CATCH_DEBUG_LAST_CATCH_MIN_X, CATCH_DEBUG_LAST_CATCH_MAX_X
 
     showCatchDebugBar()
@@ -195,11 +198,21 @@ updateCatchDebugBar(catchMinX, catchMaxX, fishX, barMiddleX, leftX, rightX, note
     rightPx := mapCatchDebugX(rightX)
     fishPx := mapCatchDebugX(fishX)
     barPx := mapCatchDebugX(barMiddleX)
+    clickTargetPx := mapCatchDebugX(clickTargetX = 0 ? fishX : clickTargetX)
 
     CATCH_DEBUG_BOUND_LEFT.Move(trackLeft + leftPx, trackTop, 2, 24)
     CATCH_DEBUG_BOUND_RIGHT.Move(trackLeft + rightPx, trackTop, 2, 24)
+    CATCH_DEBUG_CLICK_TARGET.Move(trackLeft + clickTargetPx, trackTop, 1, 24)
+    CATCH_DEBUG_CLICK_SIGNAL.Move(trackLeft + clickTargetPx, trackTop, clickDirection = 0 ? 1 : 2, 24)
     CATCH_DEBUG_FISH.Move(trackLeft + fishPx, trackTop, 2, 24)
     CATCH_DEBUG_BAR.Move(trackLeft + barPx, trackTop, 2, 24)
+
+    if clickDirection > 0
+        CATCH_DEBUG_CLICK_SIGNAL.Opt("Background57D8AD")
+    else if clickDirection < 0
+        CATCH_DEBUG_CLICK_SIGNAL.Opt("BackgroundFF6F80")
+    else
+        CATCH_DEBUG_CLICK_SIGNAL.Opt("Background8A8A8A")
 
     if IsObject(CATCH_DEBUG_TEXT)
         CATCH_DEBUG_TEXT.Text := "fish=" Round(fishX) " bar=" Round(barMiddleX) " left=" Round(leftX) " right=" Round(rightX) (note != "" ? "  " note : "")

@@ -25,6 +25,9 @@ DEFAULTS = {
     "SelectedEnchant": "None",
     "SelectedSecondaryEnchant": "None",
     "SelectedBait": "Worm",
+    "EnableShakingLoop": "true",
+    "EnableCatchingLoop": "true",
+    "EnableReelingLoop": "true",
 }
 BAITS = ["Worm", "Insect", "Minnow", "Shrimp", "Bagel", "Seaweed", "None"]
 KEY_FIELDS = [
@@ -145,6 +148,9 @@ class SetupApp(tk.Tk):
         self.key_entries: dict[str, ttk.Entry] = {}
         self.tab_buttons: dict[str, tk.Button] = {}
         self.active_tab = "home"
+        self.enable_shake_var = tk.BooleanVar(value=self._is_enabled(self.cfg.get("EnableShakingLoop", "true")))
+        self.enable_catch_var = tk.BooleanVar(value=self._is_enabled(self.cfg.get("EnableCatchingLoop", "true")))
+        self.enable_reel_var = tk.BooleanVar(value=self._is_enabled(self.cfg.get("EnableReelingLoop", "true")))
 
         self._setup_styles()
         self._build_layout()
@@ -350,6 +356,47 @@ class SetupApp(tk.Tk):
             elif widget.cget("values"):
                 widget.current(0)
 
+        toggle_box = tk.Frame(f, bg=COLORS["panel_soft"], highlightbackground=COLORS["line"], highlightthickness=1)
+        toggle_box.pack(fill="x", padx=16, pady=(12, 0))
+        self._label(toggle_box, "Loop Toggles", size=12, bold=True).pack(anchor="w", padx=10, pady=(8, 4))
+
+        tk.Checkbutton(
+            toggle_box,
+            text="Enable Shaking Loop",
+            variable=self.enable_shake_var,
+            bg=COLORS["panel_soft"],
+            fg=COLORS["text"],
+            activebackground=COLORS["panel_soft"],
+            activeforeground=COLORS["text"],
+            selectcolor=COLORS["bg2"],
+        ).pack(anchor="w", padx=10, pady=2)
+        tk.Checkbutton(
+            toggle_box,
+            text="Enable Catching Loop",
+            variable=self.enable_catch_var,
+            bg=COLORS["panel_soft"],
+            fg=COLORS["text"],
+            activebackground=COLORS["panel_soft"],
+            activeforeground=COLORS["text"],
+            selectcolor=COLORS["bg2"],
+        ).pack(anchor="w", padx=10, pady=2)
+        tk.Checkbutton(
+            toggle_box,
+            text="Enable Cast/Reeling Loop",
+            variable=self.enable_reel_var,
+            bg=COLORS["panel_soft"],
+            fg=COLORS["text"],
+            activebackground=COLORS["panel_soft"],
+            activeforeground=COLORS["text"],
+            selectcolor=COLORS["bg2"],
+        ).pack(anchor="w", padx=10, pady=(2, 8))
+
+    def _is_enabled(self, value: str) -> bool:
+        text = str(value or "").strip().lower()
+        if text == "":
+            return True
+        return text not in {"0", "false", "off", "no"}
+
     def _build_logs(self) -> None:
         f = self._tab_frame("logs")
         self._label(f, "Recent Logs", size=14, bold=True).pack(anchor="w", padx=16, pady=(14, 8))
@@ -374,6 +421,9 @@ class SetupApp(tk.Tk):
         updates["SelectedEnchant"] = self.enchant_combo.get().strip() or "None"
         updates["SelectedSecondaryEnchant"] = self.secondary_combo.get().strip() or "None"
         updates["SelectedBait"] = self.bait_combo.get().strip() or "Worm"
+        updates["EnableShakingLoop"] = "true" if self.enable_shake_var.get() else "false"
+        updates["EnableCatchingLoop"] = "true" if self.enable_catch_var.get() else "false"
+        updates["EnableReelingLoop"] = "true" if self.enable_reel_var.get() else "false"
 
         if not updates["SelectedRod"]:
             messagebox.showwarning("Setup", "Please select a rod before finishing setup.")

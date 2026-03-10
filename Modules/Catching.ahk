@@ -68,6 +68,9 @@ CATCH_BAR_GRAY_CHANNEL_DELTA_MAX := 34
 CATCH_BAR_GRAY_LUMA_MIN := 70
 CATCH_BAR_GRAY_LUMA_MAX := 245
 CATCH_BAR_RUN_GAP_TOLERANCE_PX := 4
+CATCH_EDGE_BRAKE_BASE_PX := 6
+CATCH_EDGE_BRAKE_VELOCITY_PX := 20
+CATCH_EDGE_BRAKE_LOOKAHEAD_MS := 85
 FISH_MARKER_GRAY_CHANNEL_DELTA_MAX := 28
 FISH_MARKER_LUMA_MIN := 55
 FISH_MARKER_LUMA_MAX := 190
@@ -388,7 +391,8 @@ catchFish() {
         }
 
         inCenterZone := (xFish >= CATCH_BAR_LEFT_X && xFish <= CATCH_BAR_RIGHT_X)
-        updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, inCenterZone ? "CENTER" : "TRACK")
+        clickDecision := getVelocityAwareCatchDirection(state, xFish, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, &decisionNote, &decisionX)
+        updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, inCenterZone ? "CENTER " decisionNote : "TRACK " decisionNote, decisionX, clickDecision)
 
         if inCenterZone {
             if cerebraMode && fishFromFallback && missingFishFrames >= 2 {
@@ -396,13 +400,12 @@ catchFish() {
                 Sleep 8
                 continue
             }
-            if state.clickDown
-                setControlDirection(state, -1)
+            setControlDirection(state, clickDecision)
             Sleep 2
             continue
         }
 
-        setControlDirection(state, xFish > CATCH_BAR_RIGHT_X ? 1 : -1)
+        setControlDirection(state, clickDecision)
         Sleep 6
     }
 
@@ -857,6 +860,41 @@ getCenterCutInset(barWidth) {
 
     cutRatio := (1.0 - zoneRatio) / 2.0
     return Round(Max(2, width * cutRatio))
+}
+
+getVelocityAwareCatchDirection(state, fishX, leftX, rightX, &note := "", &decisionX := 0) {
+    global CATCH_EDGE_BRAKE_BASE_PX, CATCH_EDGE_BRAKE_VELOCITY_PX, CATCH_EDGE_BRAKE_LOOKAHEAD_MS
+
+    fishVelocity := 0.0
+    barVelocity := 0.0
+    if IsObject(state) {
+        fishVelocity := state.fishVelocity
+        barVelocity := state.barVelocity
+    }
+
+    relativeVelocity := fishVelocity - (barVelocity * 0.35)
+    predictedFish := fishX + (relativeVelocity * CATCH_EDGE_BRAKE_LOOKAHEAD_MS)
+    brakePx := Round(Max(3, CATCH_EDGE_BRAKE_BASE_PX + (Abs(relativeVelocity) * CATCH_EDGE_BRAKE_VELOCITY_PX)))
+
+    decisionX := Round(clampValue(predictedFish, leftX, rightX))
+
+    if predictedFish >= (rightX - brakePx) {
+        note := "BRK-L"
+        return -1
+    }
+    if predictedFish <= (leftX + brakePx) {
+        note := "BRK-R"
+        return 1
+    }
+
+    note := "HOLD"
+    if fishX > rightX
+        return 1
+    if fishX < leftX
+        return -1
+
+    note := "WAIT"
+    return 0
 }
 
 clampValue(value, minValue, maxValue) {
