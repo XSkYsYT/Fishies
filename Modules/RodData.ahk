@@ -220,33 +220,23 @@ showRodSelectionGui() {
     yTop := 62
     homeTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Homescreen")
     tabHome.Push(homeTitle)
-    tabHome.Push(guiObj.AddText("xm y+8 w620", "Configure keybinds and save them instantly:"))
+    tabHome.Push(guiObj.AddText("xm y+8 w620", "Fixed hotkeys (not configurable):"))
 
-    keybindRows := [
-        {label: "Start", cfg: "HotkeyStart", fallback: "F1"},
-        {label: "Pause", cfg: "HotkeyPause", fallback: "F2"},
-        {label: "Exit", cfg: "HotkeyExit", fallback: "F3"},
-        {label: "Feedback", cfg: "HotkeyFeedback", fallback: "F4"},
-        {label: "Reload", cfg: "HotkeyReload", fallback: "F5"},
-        {label: "Redo Setup", cfg: "HotkeyRedo", fallback: "F7"},
-        {label: "Safe Pause", cfg: "HotkeySafePause", fallback: "F12"}
-    ]
-    keybindEdits := Map()
     rowY := yTop + 52
-    for _, row in keybindRows {
-        lbl := guiObj.AddText("xm y" rowY " w140", row.label ":")
-        edit := guiObj.AddEdit("x+8 yp-3 w110", getInfoConfigValue(row.cfg, row.fallback))
-        tabHome.Push(lbl)
-        tabHome.Push(edit)
-        keybindEdits[row.cfg] := edit
-        rowY += 30
+    fixedHotkeys := [
+        "F1  -> Start Macro",
+        "F2  -> Pause Macro",
+        "F3  -> Exit Macro",
+        "F4  -> Open Feedback",
+        "F5  -> Reload Macro",
+        "F7  -> Redo Detection Setup",
+        "F12 -> Toggle Safe Pause"
+    ]
+    for _, hkLine in fixedHotkeys {
+        lineCtrl := guiObj.AddText("xm y" rowY " w620", hkLine)
+        tabHome.Push(lineCtrl)
+        rowY += 26
     }
-    saveKeysBtn := guiObj.AddButton("xm y" (rowY + 6) " w180", "Save Keybinds")
-    keysStatus := guiObj.AddText("x+10 yp+5 w430", "")
-    tabHome.Push(saveKeysBtn)
-    tabHome.Push(keysStatus)
-
-    saveKeysBtn.OnEvent("Click", (*) => saveKeybindConfigFromGui(keybindEdits, keysStatus))
 
     colorTitle := guiObj.AddText("xm y" yTop " w620 cC9D6FF", "Color Config")
     tabColor.Push(colorTitle)

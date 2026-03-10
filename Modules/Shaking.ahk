@@ -12,11 +12,11 @@ FAST_LURE_SKIP_THRESHOLD := 100
 FAST_LURE_FORCE_ADVANCE_FRAMES := 4
 FAST_LURE_NO_IMAGE_ADVANCE_FRAMES := 2
 
-SHAKE_AREA := {x1: 20, y1: 40, x2: 780, y2: 580}
+SHAKE_AREA := {x1: 100, y1: 70, x2: 700, y2: 500}
 SHAKE_AREA_CONFIGURED := false
 SHAKE_DEBUG_ENABLED := false
 SHAKE_USE_FIXED_AREA := true
-SHAKE_FIXED_AREA := {x1: 20, y1: 40, x2: 780, y2: 580}
+SHAKE_FIXED_AREA := {x1: 100, y1: 70, x2: 700, y2: 500}
 SHAKE_IMAGE := 'Assets\Shake.png'
 SHAKE_IMAGE_SEARCH_SPEC := '*10 *TransFF0000 ' SHAKE_IMAGE
 MAX_SHAKES := 50
@@ -140,6 +140,7 @@ autoShake() {
     updateStatus("Shaking.")
 
     activateRoblox()
+    ensureShakeAreaConfigured()
 
     shakePin := createShakeAreaPin()
 
@@ -147,14 +148,12 @@ autoShake() {
     success := false
 
     Loop MAX_SHAKES {
-
         updateStatus("Shaking: " A_Index "/" MAX_SHAKES)
-
         activateRoblox()
 
         if ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, SHAKE_IMAGE_SEARCH_SPEC) {
             SendEvent "{Click, " X ", " Y "}"
-            lastShake := {x: X, y: X}
+            lastShake := {x: X, y: Y}
             MouseMove SHAKE_AREA.x2, SHAKE_AREA.y2
             loop 5 {
                 if !ImageSearch(&X, &Y, SHAKE_AREA.x1, SHAKE_AREA.y1, SHAKE_AREA.x2, SHAKE_AREA.y2, SHAKE_IMAGE_SEARCH_SPEC)
@@ -162,87 +161,15 @@ autoShake() {
                 Sleep 10
             }
         }
+
         Sleep 10
 
         if isCatchBarDisplayed() {
-            updateStatus("")
-            success := true
-            break
-        }
+    global UI_CATCH_BAR_PIXEL
 
-    }
-
-    try shakePin.Destroy()
-
-    updateStatus("")
-    return success
-}
-
-isFastLureSpeedRod() {
-    global FAST_LURE_SKIP_THRESHOLD
-    lure := getSelectedLureSpeedPercent()
-    return lure >= FAST_LURE_SKIP_THRESHOLD
-}
-
-isCerebraRodSelected() {
-    global SELECTED_ROD_NAME
-
-    rodName := ""
-    try rodName := SELECTED_ROD_NAME
-    if rodName = ""
-        return false
-    return RegExMatch(StrLower(rodName), "\bcerebra\b")
-}
-
-getSelectedLureSpeedPercent() {
-    stats := getSelectedRodStats()
-    if !IsObject(stats)
-        return 0
-    if !stats.HasOwnProp("lure")
-        return 0
-
-    lureRaw := stats.lure
-    try return Number(lureRaw)
-
-    text := Trim("" lureRaw)
-    if RegExMatch(text, "([+\-]?\d+(?:\.\d+)?)", &match)
-        return Number(match[1])
-    return 0
-}
-
-isCatchBarDisplayed() {
-    global CATCH_SCAN_AREA, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, CATCH_BAR_TOP_LINE
-    global CATCH_BAR_MIN_RUN_RATIO, CATCH_BAR_MIN_RUN_PX
-
+    pixel := UI_CATCH_BAR_PIXEL
     activateRoblox()
-
-    barWidth := CATCH_BAR_TOP_LINE.x2 - CATCH_BAR_TOP_LINE.x1 + 1
-    minRun := Round(Max(CATCH_BAR_MIN_RUN_PX, barWidth * CATCH_BAR_MIN_RUN_RATIO))
-
-    ; Prefer contiguous-run checks instead of single-pixel checks to avoid false positives
-    ; that can prematurely skip shaking.
-    if IsObject(CATCH_SCAN_COLOR_SET) {
-        if hasCatchColorRunOnLine(CATCH_BAR_TOP_LINE.x1, CATCH_BAR_TOP_LINE.y1, CATCH_BAR_TOP_LINE.x2, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, minRun)
-            return true
-
-        yStart := Max(CATCH_SCAN_AREA.y1, CATCH_BAR_TOP_LINE.y1 - 2)
-        yEnd := Min(CATCH_SCAN_AREA.y2, CATCH_BAR_TOP_LINE.y1 + 2)
-        y := yStart
-        while y <= yEnd {
-            if hasCatchColorRunOnLine(CATCH_SCAN_AREA.x1, y, CATCH_SCAN_AREA.x2, CATCH_SCAN_COLOR_SET, CATCH_SCAN_COLOR_VARIATION, minRun)
-                return true
-            y += 1
-        }
-    }
-
-    if isCerebraRodSelected() {
-        if isCerebraCatchBarDisplayedByColor()
-            return true
-        if findFishIndicatorX(CATCH_SCAN_AREA, &fishX)
-            return true
-    }
-
-    return false
+    return PixelSearch(&X, &Y, pixel.x, pixel.y, pixel.x, pixel.y, pixel.colour, 2)
 }
 
 hasCatchColorRunOnLine(x1, y, x2, colorSet, variation, minRun) {

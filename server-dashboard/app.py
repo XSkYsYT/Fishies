@@ -102,13 +102,6 @@ CATCHING_TUNING_LIMITS: dict[str, tuple[float, float]] = {
 DISCRETE_CATCHING_FIELDS = {"lookaheadMs", "deadzonePx"}
 
 SETUP_DEFAULTS = {
-    "HotkeyStart": "F1",
-    "HotkeyPause": "F2",
-    "HotkeyExit": "F3",
-    "HotkeyFeedback": "F4",
-    "HotkeyReload": "F5",
-    "HotkeyRedo": "F7",
-    "HotkeySafePause": "F12",
     "ColorPreset": "default.ini",
     "SelectedRod": "",
     "SelectedEnchant": "None",

@@ -321,6 +321,7 @@ catchFish() {
             learning.fishDetectedFrames += 1
         }
         updateFishState(state, xFish, dt)
+        trackedFishX := updateTargetPrediction(state, xFish, fishDetected, dt, catchMinX, catchMaxX)
 
         controlBar := getControlBarProperties(cerebraMode)
         barMiddleX := false
@@ -377,22 +378,22 @@ catchFish() {
 
         updateBarState(state, barMiddleX, dt)
 
-        if xFish > barRightEdge {
+        if trackedFishX > barRightEdge {
             updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "EDGE-R")
             setControlDirection(state, 1)
             Sleep 12
             continue
         }
-        if xFish < barLeftEdge {
+        if trackedFishX < barLeftEdge {
             updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, "EDGE-L")
             setControlDirection(state, -1)
             Sleep 12
             continue
         }
 
-        inCenterZone := (xFish >= CATCH_BAR_LEFT_X && xFish <= CATCH_BAR_RIGHT_X)
-        clickDecision := getVelocityAwareCatchDirection(state, xFish, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, &decisionNote, &decisionX)
-        updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, inCenterZone ? "CENTER " decisionNote : "TRACK " decisionNote, decisionX, clickDecision)
+        inCenterZone := (trackedFishX >= CATCH_BAR_LEFT_X && trackedFishX <= CATCH_BAR_RIGHT_X)
+        clickDecision := getVelocityAwareCatchDirection(state, trackedFishX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, &decisionNote, &decisionX)
+        updateCatchDebugBar(catchMinX, catchMaxX, xFish, barMiddleX, CATCH_BAR_LEFT_X, CATCH_BAR_RIGHT_X, inCenterZone ? "CENTER " decisionNote " p=" Round(trackedFishX) : "TRACK " decisionNote " p=" Round(trackedFishX), decisionX, clickDecision)
 
         if inCenterZone {
             if cerebraMode && fishFromFallback && missingFishFrames >= 2 {
@@ -738,7 +739,10 @@ createCatchingState() {
         clickDown: GetKeyState("LButton", "P"),
         commandedDirection: 0,
         lastSwitchTick: 0,
-        lastHoldEnsureTick: 0
+        lastHoldEnsureTick: 0,
+        targetPredX: 0.0,
+        targetPredVelocity: 0.0,
+        targetPredConfidence: 0.0
     }
 }
 
@@ -848,6 +852,36 @@ computePulseDelay(positionError, speedGap) {
     return Round(clampValue(2 + (magnitude * 0.05) + speedBias + nearTargetPenalty, 2, 10))
 }
 
+
+
+updateTargetPrediction(state, observedX, hasObservation, dt, minX, maxX) {
+    if !IsObject(state)
+        return clampValue(observedX, minX, maxX)
+
+    if !state.hasOwnProp("targetPredX")
+        state.targetPredX := observedX
+    if !state.hasOwnProp("targetPredVelocity")
+        state.targetPredVelocity := 0.0
+    if !state.hasOwnProp("targetPredConfidence")
+        state.targetPredConfidence := 0.0
+
+    if hasObservation {
+        correction := state.targetPredConfidence > 0.4 ? 0.58 : 0.72
+        state.targetPredX := (state.targetPredX * (1.0 - correction)) + (observedX * correction)
+        if dt > 0 {
+            instantV := (observedX - state.targetPredX) / dt
+            state.targetPredVelocity := (state.targetPredVelocity * 0.65) + (instantV * 0.35)
+        }
+        state.targetPredConfidence := clampValue(state.targetPredConfidence + 0.28, 0.0, 1.0)
+    } else {
+        predictX := state.targetPredX + (state.targetPredVelocity * dt)
+        state.targetPredX := clampValue(predictX, minX, maxX)
+        state.targetPredConfidence := clampValue(state.targetPredConfidence - 0.12, 0.0, 1.0)
+    }
+
+    state.targetPredX := clampValue(state.targetPredX, minX, maxX)
+    return Round(state.targetPredX)
+}
 
 getCenterCutInset(barWidth) {
     global CATCH_CENTER_ZONE_RATIO, CATCH_CENTER_CUT_RATIO

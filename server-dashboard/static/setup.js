@@ -1,13 +1,3 @@
-const KEY_FIELDS = [
-  ["HotkeyStart", "Start Macro"],
-  ["HotkeyPause", "Pause Macro"],
-  ["HotkeyExit", "Exit Macro"],
-  ["HotkeyFeedback", "Feedback"],
-  ["HotkeyReload", "Reload"],
-  ["HotkeyRedo", "Redo Setup"],
-  ["HotkeySafePause", "Safe Pause"],
-];
-
 const state = { data: null };
 
 function setStatus(msg, error = false) {
@@ -48,22 +38,16 @@ function render(data) {
   const cfg = data.config || {};
 
   const homeGrid = document.getElementById("home-keybind-grid");
-  const keybindGrid = document.getElementById("keybind-form-grid");
-  homeGrid.innerHTML = "";
-  keybindGrid.innerHTML = "";
-
-  KEY_FIELDS.forEach(([key, label]) => {
-    const value = cfg[key] || "";
-
-    const card = document.createElement("article");
-    card.className = "setup-key-card";
-    card.innerHTML = `<h3>${label}</h3><p>${value || "Unassigned"}</p>`;
-    homeGrid.appendChild(card);
-
-    const wrapper = document.createElement("label");
-    wrapper.innerHTML = `${label}<input id="cfg-${key}" type="text" value="${value}" />`;
-    keybindGrid.appendChild(wrapper);
-  });
+  if (homeGrid) {
+    homeGrid.innerHTML = "";
+    const fixed = ["F1 Start", "F2 Pause", "F3 Exit", "F4 Feedback", "F5 Reload", "F7 Redo", "F12 Safe Pause"];
+    fixed.forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "setup-key-card";
+      card.innerHTML = `<h3>Fixed Hotkey</h3><p>${item}</p>`;
+      homeGrid.appendChild(card);
+    });
+  }
 
   const colorInput = document.getElementById("cfg-ColorPreset");
   if (colorInput) colorInput.value = cfg.ColorPreset || "default.ini";
@@ -93,11 +77,6 @@ async function loadSetup() {
 
 function collectConfig() {
   const config = {};
-  KEY_FIELDS.forEach(([key]) => {
-    const input = document.getElementById(`cfg-${key}`);
-    config[key] = (input?.value || "").trim();
-  });
-
   ["ColorPreset", "SelectedRod", "SelectedEnchant", "SelectedSecondaryEnchant", "SelectedBait"].forEach(
     (key) => {
       const input = document.getElementById(`cfg-${key}`);
