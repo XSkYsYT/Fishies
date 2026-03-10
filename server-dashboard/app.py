@@ -43,6 +43,7 @@ USERS_FILE = DATA_DIR / "users.json"
 CHAT_FILE = DATA_DIR / "chat.json"
 ACTIVITY_FILE = DATA_DIR / "activity.json"
 TUTORIALS_DIR = STATIC_DIR / "tutorials"
+INFO_INI_FILE = PROJECT_DIR.parent / "info.ini"
 
 DEFAULT_PORT = int(os.environ.get("PORT", "3030"))
 PASSWORD_ITERATIONS = 200_000
@@ -100,6 +101,32 @@ CATCHING_TUNING_LIMITS: dict[str, tuple[float, float]] = {
 
 DISCRETE_CATCHING_FIELDS = {"lookaheadMs", "deadzonePx"}
 
+SETUP_DEFAULTS = {
+    "HotkeyStart": "F1",
+    "HotkeyPause": "F2",
+    "HotkeyExit": "F3",
+    "HotkeyFeedback": "F4",
+    "HotkeyReload": "F5",
+    "HotkeyRedo": "F7",
+    "HotkeySafePause": "F12",
+    "ColorPreset": "default.ini",
+    "SelectedRod": "",
+    "SelectedEnchant": "None",
+    "SelectedSecondaryEnchant": "None",
+    "SelectedBait": "Worm",
+}
+
+DEFAULT_BAITS = [
+    "Worm",
+    "Nightcrawler",
+    "Shrimp",
+    "Minnow",
+    "Insect",
+    "Seaweed",
+    "Truffle Worm",
+    "None",
+]
+
 DATA_LOCK = Lock()
 
 app = Flask(
@@ -141,6 +168,98 @@ def write_json(path: Path, value: Any) -> None:
     with temp_path.open("w", encoding="utf-8") as handle:
         json.dump(value, handle, ensure_ascii=True, indent=2)
     temp_path.replace(path)
+
+
+def read_info_ini() -> tuple[list[str], dict[str, str]]:
+    if not INFO_INI_FILE.exists():
+        return ([], {})
+
+    raw_lines = INFO_INI_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
+    values: dict[str, str] = {}
+    for line in raw_lines:
+        text = line.strip().lstrip("\ufeff")
+        if not text or text.startswith(";") or text.startswith("#"):
+            continue
+        if text.startswith("[") and text.endswith("]"):
+            continue
+        if "=" not in text:
+            continue
+        key, value = text.split("=", 1)
+        key = key.strip()
+        if key:
+            values[key] = value.strip()
+    return (raw_lines, values)
+
+
+def write_info_ini_updates(updates: dict[str, str]) -> None:
+    raw_lines, current = read_info_ini()
+    merged = dict(current)
+    for key, value in updates.items():
+        merged[str(key)] = str(value)
+
+    if not raw_lines:
+        ordered_keys = list(SETUP_DEFAULTS.keys())
+        for key in updates.keys():
+            if key not in ordered_keys:
+                ordered_keys.append(key)
+        INFO_INI_FILE.write_text(
+            "\n".join(f"{key}={merged.get(key, '')}" for key in ordered_keys) + "\n",
+            encoding="utf-8",
+        )
+        return
+
+    found_keys: set[str] = set()
+    output_lines: list[str] = []
+    for line in raw_lines:
+        stripped = line.strip().lstrip("\ufeff")
+        if "=" in stripped and not stripped.startswith((";", "#", "[")):
+            key, _ = stripped.split("=", 1)
+            key = key.strip()
+            if key in merged:
+                output_lines.append(f"{key}={merged[key]}")
+                found_keys.add(key)
+                continue
+        output_lines.append(line)
+
+    for key, value in merged.items():
+        if key not in found_keys:
+            output_lines.append(f"{key}={value}")
+
+    INFO_INI_FILE.write_text("\n".join(output_lines).rstrip() + "\n", encoding="utf-8")
+
+
+def get_setup_payload() -> dict[str, Any]:
+    with DATA_LOCK:
+        _, ini_values = read_info_ini()
+        rods = [normalize_rod_record(item) for item in read_json(RODS_FILE, []) if isinstance(item, dict)]
+        enchants = [
+            normalize_enchant_record(item)
+            for item in read_json(ENCHANTS_FILE, [])
+            if isinstance(item, dict)
+        ]
+
+    config = dict(SETUP_DEFAULTS)
+    for key in config.keys():
+        if key in ini_values and str(ini_values[key]).strip() != "":
+            config[key] = str(ini_values[key]).strip()
+
+    macro_log = PROJECT_DIR.parent / "logs" / "macro.log"
+    error_log = PROJECT_DIR.parent / "logs" / "errors.log"
+
+    recent_lines: list[str] = []
+    for file_path in (macro_log, error_log):
+        if file_path.exists():
+            lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            recent_lines.extend(lines[-50:])
+    recent_lines = recent_lines[-100:]
+
+    return {
+        "config": config,
+        "rods": [item["name"] for item in rods if item.get("name")],
+        "enchants": [item["name"] for item in enchants if item.get("name")],
+        "baits": clone_json(DEFAULT_BAITS),
+        "recentLogs": recent_lines,
+    }
 
 
 def generate_password_hash(password: str) -> str:
@@ -992,6 +1111,51 @@ def logout():
 def dashboard():
     user = get_session_user()
     return render_template("dashboard.html", user=user)
+
+
+
+
+@app.route("/setup", methods=["GET"])
+@login_required
+def setup_page():
+    user = get_session_user()
+    return render_template("setup.html", user=user)
+
+
+@app.route("/api/setup/config", methods=["GET"])
+@login_required
+def api_setup_config():
+    return jsonify({"ok": True, "data": get_setup_payload()})
+
+
+@app.route("/api/setup/config", methods=["PUT"])
+@login_required
+def api_setup_config_update():
+    payload = parse_body_object()
+    config_raw = payload.get("config") if isinstance(payload.get("config"), dict) else payload
+
+    allowed = set(SETUP_DEFAULTS.keys())
+    updates: dict[str, str] = {}
+    for key in allowed:
+        if key in config_raw:
+            updates[key] = str(config_raw.get(key, "")).strip()
+
+    if "SelectedRod" in updates and updates["SelectedRod"]:
+        with DATA_LOCK:
+            rods = [normalize_rod_record(item) for item in read_json(RODS_FILE, []) if isinstance(item, dict)]
+        rod_names = {str(item.get("name", "")).strip().lower() for item in rods}
+        if updates["SelectedRod"].lower() not in rod_names:
+            return jsonify({"ok": False, "error": "invalid_rod"}), 400
+
+    if "SelectedBait" in updates and not updates["SelectedBait"]:
+        updates["SelectedBait"] = SETUP_DEFAULTS["SelectedBait"]
+
+    with DATA_LOCK:
+        write_info_ini_updates(updates)
+
+    user = get_session_user() or {"username": "system"}
+    append_activity("setup", "Updated setup configuration", user["username"], {"keys": sorted(list(updates.keys()))})
+    return jsonify({"ok": True, "data": get_setup_payload()})
 
 
 @app.route("/api/session", methods=["GET"])
